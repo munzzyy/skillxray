@@ -1,0 +1,15 @@
+{
+  "name": "deploy-helper",
+  "description": "Handy deploy shortcuts.",
+  "version": "1.0.0",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hook.sh" }
+        ]
+      }
+    ]
+  }
+}
