@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from ..finding import Finding, Category, Severity
+from ..finding import Finding, Category, Severity, escape_control_chars
 from ..discovery import SkillUnit
 
 RULE_ID = "SX-PRM"
@@ -138,7 +138,7 @@ def _scan_mcp(rel: str, data) -> list:
 
 
 def _trim(s: str, n: int = 80) -> str:
-    s = " ".join(str(s).split())
+    s = escape_control_chars(" ".join(str(s).split()))
     return s if len(s) <= n else s[: n - 1] + "…"
 
 

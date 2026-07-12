@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -102,13 +103,24 @@ def line_col(text: str, index: int) -> tuple[int, int]:
     return line, col
 
 
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def escape_control_chars(text: str) -> str:
+    """Replace any C0/C1 control byte -- ESC included -- with a visible \\xNN
+    placeholder. Snippets and finding details are built from scanned file
+    content, which is untrusted: without this, a crafted file can plant
+    terminal escape codes that survive verbatim into the printed report."""
+    return _CONTROL_RE.sub(lambda m: f"\\x{ord(m.group(0)):02x}", text)
+
+
 def snippet_for(text: str, index: int, width: int = 120) -> str:
     """The single source line containing `index`, trimmed and truncated."""
     start = text.rfind("\n", 0, index) + 1
     end = text.find("\n", index)
     if end == -1:
         end = len(text)
-    line = text[start:end].strip()
+    line = escape_control_chars(text[start:end].strip())
     if len(line) > width:
         line = line[: width - 1] + "…"
     return line

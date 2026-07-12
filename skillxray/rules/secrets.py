@@ -30,11 +30,24 @@ _PATTERNS = [
     (re.compile(r"\bhooks\.slack\.com/services/T[A-Za-z0-9/]{20,}"), Severity.MEDIUM, "Slack incoming webhook"),
 ]
 
-# Generic assignment of something key-shaped. Kept LOW and placeholder-filtered.
-_GENERIC = re.compile(
-    r"(?i)\b(api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|auth[_-]?token|password|passwd)\b"
-    r"\s*[:=]\s*[\"']([^\"'\n]{12,})[\"']"
+# A key ending in one of these tokens, optionally prefixed by another
+# identifier segment. STRIPE_SECRET_KEY is exactly as live as SECRET_KEY on
+# its own, but "_" is a word character, so a plain \b...\b never sees the
+# prefixed form -- there's no boundary between the prefix and the token.
+# Capturing (matches the original single-group key) so the prefix shows up in
+# the finding text too -- "A STRIPE_SECRET_KEY is assigned..." is a more
+# useful message than just "A secret_key is assigned...".
+_SECRET_KEY = (
+    r"\b([\w-]*(?:api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|auth[_-]?token|"
+    r"password|passwd))\b"
 )
+
+# Generic assignment of something key-shaped. Kept LOW and placeholder-filtered.
+_GENERIC = re.compile(r"(?i)" + _SECRET_KEY + r"\s*[:=]\s*[\"']([^\"'\n]{12,})[\"']")
+# Unquoted form -- .env files and shell exports routinely skip the quotes
+# entirely (`STRIPE_SECRET_KEY=sk_live_...`), and that is exactly as live a
+# leak as the quoted form above.
+_GENERIC_UNQUOTED = re.compile(r"(?i)" + _SECRET_KEY + r"\s*[:=]\s*([^\s;&|`\"'\n]{12,})")
 _PLACEHOLDER = re.compile(
     r"(?i)^(?:your|my|the|a|some|example|sample|dummy|test|fake|placeholder|change[_-]?me|"
     r"xxx+|\.{3,}|<[^>]+>|\$\{?[a-z_]+\}?|todo|redacted|none|null|abc123|password)")
@@ -50,16 +63,17 @@ def check(unit: SkillUnit) -> list:
                     f"Hardcoded {label}",
                     f"A {label} appears to be committed into the skill.",
                     "Remove the credential and rotate it — anything pushed to git is compromised. Load secrets from the environment at runtime."))
-        for m in _GENERIC.finditer(text):
-            value = m.group(2).strip()
-            if _PLACEHOLDER.match(value):
-                continue
-            if len(set(value)) < 6:  # low-entropy filler like "aaaaaaaaaaaa"
-                continue
-            findings.append(_mk(t, text, m.start(), Severity.LOW,
-                "Possible hardcoded secret",
-                f"A {m.group(1)} is assigned a literal value. If this is a real credential, it is leaked.",
-                "Load secrets from the environment, not from a literal in the skill."))
+        for rx in (_GENERIC, _GENERIC_UNQUOTED):
+            for m in rx.finditer(text):
+                value = m.group(2).strip()
+                if _PLACEHOLDER.match(value):
+                    continue
+                if len(set(value)) < 6:  # low-entropy filler like "aaaaaaaaaaaa"
+                    continue
+                findings.append(_mk(t, text, m.start(), Severity.LOW,
+                    "Possible hardcoded secret",
+                    f"A {m.group(1)} is assigned a literal value. If this is a real credential, it is leaked.",
+                    "Load secrets from the environment, not from a literal in the skill."))
     return findings
 
 

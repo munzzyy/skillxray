@@ -45,7 +45,15 @@ _PATTERNS = [
     (re.compile(r"\bwithout\s+(?:the\s+user'?s?\s+)?(?:permission|consent|confirmation|approval)\b", _I),
      Severity.MEDIUM, "Act-without-consent directive",
      "Text instructs the agent to proceed without the user's permission."),
-    (re.compile(r"\b(?:reveal|print|show|repeat|output|disclose|leak|dump)\s+(?:your|the|his|her|its)\s+(?:system\s+prompt|initial\s+instructions|instructions|prompt)\b", _I),
+    # The determiner ("your"/"the"/...) is optional in front of the two
+    # highest-signal nouns -- "output system prompt now" has no determiner at
+    # all and was missing entirely -- but still required in front of the bare
+    # "instructions"/"prompt" so this doesn't fire on every unrelated use of
+    # those common words.
+    (re.compile(r"\b(?:reveal|print|show|repeat|output|disclose|leak|dump)\s+(?:"
+                r"(?:(?:your|the|his|her|its)\s+)?(?:system\s+prompt|initial\s+instructions|system\s+message)|"
+                r"(?:your|the|his|her|its)\s+(?:instructions|prompt)"
+                r")\b", _I),
      Severity.HIGH, "System-prompt disclosure attempt",
      "Text tries to get the agent to reveal its system prompt or hidden instructions."),
     (re.compile(r"\bregardless\s+of\s+(?:what|any|whatever)\s+(?:the\s+user|instructions?|guidelines?|rules?|you\s+(?:are|were)\s+told)", _I),
@@ -57,6 +65,22 @@ _PATTERNS = [
     (re.compile(r"\byou\s+are\s+now\s+(?:a|an|in|the|no\s+longer)\b", _I),
      Severity.MEDIUM, "Persona-override phrasing",
      "Text attempts to redefine what the agent is, a common jailbreak opener."),
+    # "You are now DAN" doesn't match the pattern above -- "DAN" isn't
+    # "a/an/in/the/no longer". Only the persona token itself needs to look
+    # capitalized/name-shaped ((?i:...) scopes case-folding to "you are now"
+    # so the outer compile can stay case-sensitive for [A-Z]); ordinary
+    # continuations like "you are now ready" or "you are now logged in" start
+    # lowercase and never reach this branch.
+    (re.compile(r"\b(?i:you\s+are\s+now)\s+[A-Z][A-Za-z0-9]{1,}\b"),
+     Severity.MEDIUM, "Persona-override phrasing",
+     "Text assigns the agent a specific named persona right after telling it what it now is, "
+     "the exact shape of \"you are now DAN,\" a well-known jailbreak opener."),
+    (re.compile(r"\b(?:unrestricted|unfiltered|uncensored|jailbroken)\s+(?:AI|assistant|model|mode)\b", _I),
+     Severity.HIGH, "Jailbreak-persona phrasing",
+     "Text tells the agent it is an unrestricted, unfiltered, or jailbroken AI, a common jailbreak framing."),
+    (re.compile(r"\bno\s+(?:safety|content|ethical)\s+(?:rules|guidelines|filters|restrictions)\b", _I),
+     Severity.HIGH, "Safety-bypass claim",
+     "Text claims there are no safety, content, or ethical rules in place, asserting away the agent's guardrails."),
     (re.compile(r"\balways\s+(?:run|execute|use|call|invoke)\b[^\n.]*\bwithout\s+(?:asking|confirming|prompting|checking)", _I),
      Severity.HIGH, "Silent tool-execution directive",
      "Text tells the agent to always run something without asking."),

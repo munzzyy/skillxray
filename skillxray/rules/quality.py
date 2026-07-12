@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import re
 
-from ..finding import Finding, Category, Severity
-from ..discovery import SkillUnit
+from ..finding import Finding, Category, Severity, escape_control_chars
+from ..discovery import MAX_FILE_BYTES, SkillUnit
 
 RULE_ID = "SX-QLT"
 
@@ -52,8 +52,12 @@ def hygiene_checks(unit: SkillUnit) -> list:
                    "" if has_license else "no LICENSE file in the skill"))
 
     broken = _broken_refs(unit)
+    # A link target is text pulled straight out of the skill's own markdown --
+    # just as untrusted as anything else in the file -- so it gets the same
+    # control-byte escaping as a snippet before it goes into a finding detail.
     checks.append(("no broken file refs", not broken,
-                   "" if not broken else f"references missing files: {', '.join(broken[:5])}"))
+                   "" if not broken else
+                   f"references missing files: {', '.join(escape_control_chars(b) for b in broken[:5])}"))
     return checks
 
 
@@ -116,5 +120,39 @@ def check(unit: SkillUnit) -> list:
                 column=col,
                 snippet="(long base64 line)",
                 remediation="Move large assets to a referenced file instead of inlining them.",
+            ))
+    # discovery.py caps how much of a file it reads and flags the ones it had
+    # to truncate or couldn't decode cleanly, but nothing surfaced that flag
+    # anywhere -- a payload sitting past the 2 MB mark was silently unscanned
+    # and the report never said so. Make a partial scan visible.
+    for t in unit.files:
+        if t.oversized:
+            findings.append(Finding(
+                rule_id=RULE_ID,
+                category=Category.QUALITY,
+                severity=Severity.LOW,
+                title="File exceeds the scan size limit",
+                detail=f"Only the first {MAX_FILE_BYTES:,} bytes of this file were read; "
+                       "anything past that point was never scanned.",
+                file=t.relpath,
+                line=0,
+                column=0,
+                snippet="",
+                remediation="Split large files up, or treat an oversized file in a skill as "
+                            "worth a manual look -- this scanner couldn't see all of it.",
+            ))
+        if t.decode_error:
+            findings.append(Finding(
+                rule_id=RULE_ID,
+                category=Category.QUALITY,
+                severity=Severity.INFO,
+                title="File is not valid UTF-8",
+                detail="This file could not be decoded cleanly as UTF-8; invalid bytes were "
+                       "replaced before scanning, which can mask or distort its content.",
+                file=t.relpath,
+                line=0,
+                column=0,
+                snippet="",
+                remediation="Confirm the encoding is intentional for a text file in the skill.",
             ))
     return findings

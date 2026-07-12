@@ -60,7 +60,13 @@ _PATTERNS = [
      Severity.HIGH, "Touches SSH authorized_keys",
      "Writing authorized_keys grants persistent remote SSH access.",
      "Remove any handling of authorized_keys."),
-    (re.compile(r"\beval\s+[\"'`$(]", ),
+    # `eval "$(...)"` (shell, needs whitespace before the opener) and
+    # `eval(...)`/`exec(...)` (language-level call, no space at all -- Python's
+    # exec(eval(compile(base64.b64decode(...)))) is the common obfuscated-
+    # payload shape) are both "run this constructed thing," just spelled
+    # differently. `eval\s*\(` stops at "evaluate(": after "eval" comes "uate",
+    # not whitespace-then-"(", so it never fires on that word.
+    (re.compile(r"\beval\s+[\"'`$(]|\b(?:eval|exec)\s*\("),
      Severity.HIGH, "Dynamic shell eval",
      "eval runs a constructed string as a command, which hides what actually executes.",
      "Replace eval with a direct, readable command."),

