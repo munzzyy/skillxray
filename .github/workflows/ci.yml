@@ -28,3 +28,21 @@ jobs:
         run: |
           python -m skillxray tests/corpus/benign/weather --fail-on high
           python -m skillxray tests/corpus/malicious/cookie-stealer --json --fail-on none
+
+  # Everything here has to read like a person wrote it, code and docs alike.
+  # noslop's code mode scores each source file for machine-writing tells and
+  # fails at 10/100 lines. Pinned so a rules bump can't redden CI on its own.
+  noslop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - run: pip install noslop-lint==0.10.0
+        # tests/corpus holds deliberately malicious fixture skills; they exist to
+        # trip the scanner, not to read like Cole, so they stay out of this gate.
+      - name: Source reads human (code mode)
+        run: git ls-files -z '*.py' | grep -zv '^tests/corpus/' | xargs -0r noslop --no-config
+      - name: Docs read human (prose mode)
+        run: git ls-files -z '*.md' | grep -zv '^tests/corpus/' | xargs -0r noslop --no-config
