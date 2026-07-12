@@ -44,7 +44,7 @@ _PATTERNS = [
      Severity.CRITICAL, "Interactive shell redirected to a socket",
      "An interactive bash redirected to a network descriptor is a reverse shell.",
      "Remove it."),
-    (re.compile(r"\brm\s+-[a-z]*r[a-z]*f[a-z]*\b[^\n|;&]*?(?:\s/(?:\s|$|['\"])|\s~(?:/|\s|$)|\$HOME|\s/\*|--no-preserve-root)", _I),
+    (re.compile(r"\brm\s+-(?=[a-z]*r)(?=[a-z]*f)[a-z]+\b[^\n|;&]*?(?:\s/(?:\s|$|['\"])|\s~(?:/|\s|$)|\$HOME|\s/\*|--no-preserve-root)", _I),
      Severity.HIGH, "Destructive recursive delete",
      "A recursive force-delete aimed at a home directory, filesystem root, or a broad glob.",
      "Scope deletes to a specific project path and never target ~ or /."),

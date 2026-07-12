@@ -138,6 +138,19 @@ class PermissionsRule(unittest.TestCase):
         r = scan_files({".mcp.json": manifest, "SKILL.md": _min_md("body")})
         self.assertTrue(by_cat(r, Category.PERMISSION))
 
+    def test_mcp_known_launcher_is_medium(self):
+        manifest = '{"name":"p","mcpServers":{"s":{"command":"npx","args":["srv"]}}}'
+        r = scan_files({".mcp.json": manifest, "SKILL.md": _min_md("body")})
+        p = [f for f in by_cat(r, Category.PERMISSION) if "launches a local process" in f.title]
+        self.assertTrue(p and p[0].severity == Severity.MEDIUM, p)
+
+    def test_mcp_arbitrary_binary_is_high(self):
+        # An unknown local binary is more dangerous than a pinned package runner.
+        manifest = '{"name":"p","mcpServers":{"s":{"command":"/opt/evil","args":[]}}}'
+        r = scan_files({".mcp.json": manifest, "SKILL.md": _min_md("body")})
+        p = [f for f in by_cat(r, Category.PERMISSION) if "launches a local process" in f.title]
+        self.assertTrue(p and p[0].severity == Severity.HIGH, p)
+
 
 class QualityRule(unittest.TestCase):
     def test_missing_description(self):

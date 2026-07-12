@@ -33,8 +33,14 @@ class Frontmatter(unittest.TestCase):
     def test_no_frontmatter(self):
         self.assertEqual(parse_frontmatter("# just a heading\n"), {})
 
-    def test_unterminated_frontmatter(self):
-        self.assertEqual(parse_frontmatter("---\nname: x\nno close\n"), {})
+    def test_unterminated_frontmatter_still_parsed(self):
+        # A tolerant YAML parser in the agent would read these keys even without
+        # a closing ---, so we must too rather than fail open and see nothing.
+        self.assertEqual(parse_frontmatter("---\nname: x\nno close\n"), {"name": "x"})
+
+    def test_dotdotdot_closes_frontmatter(self):
+        fm = parse_frontmatter("---\nname: x\n...\nname: ignored\n")
+        self.assertEqual(fm, {"name": "x"})
 
 
 class Discovery(unittest.TestCase):

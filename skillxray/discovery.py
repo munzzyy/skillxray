@@ -61,6 +61,7 @@ class ScanTarget:
     raw: bytes = b""
     text: str = ""
     decode_error: bool = False
+    oversized: bool = False  # bigger than MAX_FILE_BYTES; only the prefix was read
 
     @property
     def is_text(self) -> bool:
@@ -84,10 +85,14 @@ class SkillUnit:
 
 
 def _read(path: Path, root: Path) -> Optional[ScanTarget]:
+    # Never fail open on a big file: instead of skipping it wholesale (which lets
+    # an attacker hide a payload behind 2 MB of padding), scan the first
+    # MAX_FILE_BYTES and flag it oversized so the prefix is still checked.
+    oversized = False
     try:
-        if path.stat().st_size > MAX_FILE_BYTES:
-            return None
-        raw = path.read_bytes()
+        oversized = path.stat().st_size > MAX_FILE_BYTES
+        with open(path, "rb") as fh:
+            raw = fh.read(MAX_FILE_BYTES)
     except OSError:
         return None
     kind = classify(path)
@@ -95,7 +100,7 @@ def _read(path: Path, root: Path) -> Optional[ScanTarget]:
         rel = str(path.relative_to(root))
     except ValueError:
         rel = path.name
-    target = ScanTarget(path=path, relpath=rel, kind=kind, raw=raw)
+    target = ScanTarget(path=path, relpath=rel, kind=kind, raw=raw, oversized=oversized)
     if kind == "binary":
         # Salvage files with an unknown extension that are really UTF-8 text
         # (e.g. .pem keys, extensionless configs) so their contents get scanned.
@@ -138,14 +143,13 @@ def parse_frontmatter(text: str) -> dict:
     if not lines or lines[0].strip() != "---":
         return {}
     body = []
-    closed = False
     for ln in lines[1:]:
-        if ln.strip() == "---":
-            closed = True
+        # `---` or `...` both close a YAML document. Don't bail on an unclosed
+        # block either: a tolerant parser in the agent would still read those
+        # keys, so we parse whatever frontmatter is present rather than fail open.
+        if ln.strip() in ("---", "..."):
             break
         body.append(ln)
-    if not closed:
-        return {}
     out: dict = {}
     key = None
     for ln in body:

@@ -124,7 +124,7 @@ def _scan_mcp(rel: str, data) -> list:
         if cmd:
             args = cfg.get("args") or []
             full = " ".join([str(cmd)] + [str(a) for a in args]) if isinstance(args, list) else str(cmd)
-            sev = Severity.MEDIUM if str(cmd) in ("npx", "uvx", "bunx", "pnpm", "yarn") else Severity.MEDIUM
+            sev = Severity.MEDIUM if str(cmd) in ("npx", "uvx", "bunx", "pnpm", "yarn") else Severity.HIGH
             findings.append(_mk(RULE_ID, Category.PERMISSION, sev, rel,
                 f"MCP server '{sname}' launches a local process",
                 f"Starts `{_trim(full)}`. Whatever that command resolves to runs on the machine with the skill's trust.",

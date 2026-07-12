@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -48,15 +49,19 @@ def scan_git(url: str, ref: str | None = None) -> ScanResult:
     ]
     if ref:
         cmd += ["--branch", ref]
-    cmd += [url, str(dest)]
+    # `--` stops git from reading a url that begins with `-` as an option
+    # (e.g. --upload-pack=…, which would run an arbitrary command).
+    cmd += ["--", url, str(dest)]
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=180)
+        result = scan_path(dest)
+        result.root = url
+        return result
     except FileNotFoundError:
         raise RuntimeError("git is not installed; --git needs git on PATH")
     except subprocess.TimeoutExpired:
         raise RuntimeError("git clone timed out")
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"git clone failed: {e.stderr.strip() or e}")
-    result = scan_path(dest)
-    result.root = url
-    return result
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
