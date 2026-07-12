@@ -28,6 +28,8 @@ $ skillxray ./some-skill
 
 ## What it checks
 
+See the [Rules Reference](docs/rules.md) for full details on each rule, its severity, and how to fix it.
+
 - Prompt injection aimed at the agent: "ignore previous instructions", "don't tell the user", "reveal your system prompt", silent tool execution.
 - Hidden Unicode: bidi overrides (Trojan Source), invisible tag characters that smuggle instructions, zero-width characters breaking up words.
 - Dangerous commands: `curl | sh`, base64 piped to a shell, reverse shells, `rm -rf ~`, writes to shell startup files, cron persistence, `shell=True`, disabled TLS.
