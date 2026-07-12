@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skillxray"
-version = "0.1.1"
+version = "0.2.0"
 description = "Scan an AI agent skill for prompt injection, hidden Unicode, dangerous commands, and leaked secrets before you install it."
 readme = "README.md"
 license = { text = "Prosperity Public License 3.0.0" }
