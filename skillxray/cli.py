@@ -9,7 +9,7 @@ import sys
 from . import __version__
 from .finding import Severity
 from .report import render_human, render_json, render_sarif
-from .scanner import scan_path, scan_git
+from .scanner import scan_path, scan_paths, scan_git
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -17,7 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="skillxray",
         description="Security and hygiene scanner for AI agent skills (SKILL.md, plugins, MCP bundles).",
     )
-    p.add_argument("target", nargs="?", default=".",
+    p.add_argument("target", nargs="*", default=["."],
                    help="path to a skill dir, a SKILL.md, or a directory of skills (default: .)")
     p.add_argument("--git", metavar="URL",
                    help="clone a git repo (shallow, read-only) and scan it instead of a local path")
@@ -52,10 +52,11 @@ def main(argv=None) -> int:
         if args.git:
             result = scan_git(args.git, args.ref)
         else:
-            if not os.path.exists(args.target):
-                print(f"skillxray: no such path: {args.target}", file=sys.stderr)
-                return 2
-            result = scan_path(args.target)
+            for target_path in args.target:
+                if not os.path.exists(target_path):
+                    print(f"skillxray: no such path: {target_path}", file=sys.stderr)
+                    return 2
+            result = scan_paths(args.target)
     except RuntimeError as e:
         print(f"skillxray: {e}", file=sys.stderr)
         return 2
