@@ -1,0 +1,6 @@
+- id: skillxray
+  name: 'skillxray (AI skill security scan)'
+  entry: skillxray
+  language: python
+  files: '(^|/)SKILL\.md$'
+  pass_filenames: true

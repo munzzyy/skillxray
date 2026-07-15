@@ -14,10 +14,15 @@ from .rules import run_all
 from .rules.quality import hygiene_checks
 
 
-def scan_path(path) -> ScanResult:
-    path = Path(path)
-    units = discover(path)
-    result = ScanResult(root=str(path))
+def scan_paths(paths: list[str | Path]) -> ScanResult:
+    if not paths:
+        return ScanResult(root=".")
+
+    units = []
+    for p in paths:
+        units.extend(discover(Path(p)))
+
+    result = ScanResult(root=str(paths[0]) if len(paths) == 1 else "[multiple]")
     result.units = len(units)
     scanned = 0
     hygiene: dict = {}
@@ -36,6 +41,10 @@ def scan_path(path) -> ScanResult:
     result.findings.sort(key=lambda f: f.sort_key())
     result.grade, result.grade_score = grade(result.findings)
     return result
+
+
+def scan_path(path) -> ScanResult:
+    return scan_paths([path])
 
 
 def scan_git(url: str, ref: str | None = None) -> ScanResult:

@@ -76,6 +76,18 @@ It also speaks SARIF, so findings show up in the GitHub Security tab:
     sarif_file: skillxray.sarif
 ```
 
+### Pre-commit
+
+You can also run skillxray as a pre-commit hook to block dangerous skills from being committed. Add this to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/munzzyy/skillxray
+    rev: v0.2.0
+    hooks:
+      - id: skillxray
+```
+
 ### Output formats
 
 - default — colored human report
