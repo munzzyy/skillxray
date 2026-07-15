@@ -44,9 +44,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install noslop-lint==0.10.0
-        # tests/corpus holds deliberately malicious fixture skills; they exist to
-        # trip the scanner, not to read like Cole, so they stay out of this gate.
+        # tests/corpus and examples/ hold deliberately malicious fixture skills; they
+        # exist to trip the scanner, not to read like Cole, so they stay out of this gate.
       - name: Source reads human (code mode)
-        run: git ls-files -z '*.py' | grep -zv '^tests/corpus/' | xargs -0r noslop --no-config
+        run: git ls-files -z '*.py' | grep -zvE '^(tests/corpus|examples)/' | xargs -0r noslop --no-config
       - name: Docs read human (prose mode)
-        run: git ls-files -z '*.md' | grep -zv '^tests/corpus/' | xargs -0r noslop --no-config
+        run: git ls-files -z '*.md' | grep -zvE '^(tests/corpus|examples)/' | xargs -0r noslop --no-config
