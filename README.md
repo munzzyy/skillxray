@@ -1,7 +1,7 @@
 # skillxray
 
 [![CI](https://github.com/munzzyy/skillxray/actions/workflows/ci.yml/badge.svg)](https://github.com/munzzyy/skillxray/actions/workflows/ci.yml)
-[![License: Prosperity 3.0.0](https://img.shields.io/badge/license-Prosperity--3.0.0-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 
 Scan an AI agent skill before you install it. skillxray reads a `SKILL.md` bundle, a Claude Code plugin, an MCP bundle, or a whole folder of them and tells you what's in there: prompt injection, hidden Unicode, `curl | sh` and reverse shells, credential-stealing patterns, leaked keys, and auto-running hooks. You get a per-finding report and a letter grade, with exit codes for CI.
@@ -120,4 +120,4 @@ Found a skill that should have been flagged and wasn't, or a false positive? Ope
 
 ## License
 
-Prosperity Public License 3.0.0 — free for noncommercial use, thirty-day trial for commercial use. See [LICENSE](LICENSE). Contributions come in under the Blue Oak Model License; see [CONTRIBUTING.md](CONTRIBUTING.md).
+MIT — free to use, change, and ship, commercial or not. See [LICENSE](LICENSE).
