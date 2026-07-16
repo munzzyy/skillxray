@@ -1,6 +1,7 @@
 # skillxray
 
 [![CI](https://github.com/munzzyy/skillxray/actions/workflows/ci.yml/badge.svg)](https://github.com/munzzyy/skillxray/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/skillxray)](https://pypi.org/project/skillxray/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 
@@ -33,7 +34,7 @@ See the [Rules Reference](docs/rules.md) for full details on each rule, its seve
 One command:
 
 ```bash
-pipx install git+https://github.com/munzzyy/skillxray
+pipx install skillxray
 ```
 
 Pure standard library, Python 3.9+, no runtime dependencies — so a plain clone works too:
@@ -43,8 +44,6 @@ git clone https://github.com/munzzyy/skillxray
 cd skillxray
 python -m skillxray ./some-skill      # run it directly, no install
 ```
-
-Not on PyPI yet; `pipx install skillxray` will work once the first release lands there.
 
 ## Usage
 
@@ -121,3 +120,7 @@ Found a skill that should have been flagged and wasn't, or a false positive? Ope
 ## License
 
 MIT — free to use, change, and ship, commercial or not. See [LICENSE](LICENSE).
+
+## Support
+
+If skillxray flagged something before it reached your machine, [sponsoring](https://github.com/sponsors/munzzyy) is what keeps the rules growing.
