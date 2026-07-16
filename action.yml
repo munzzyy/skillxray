@@ -1,0 +1,114 @@
+name: "skillxray"
+description: >-
+  Scan an AI agent skill, plugin, or MCP bundle for prompt injection, hidden
+  Unicode, dangerous commands, exfiltration, and leaked secrets, and upload the
+  findings as SARIF so they land in the repo's Security tab.
+author: "Cole Munz"
+
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  python-version:
+    description: "Python version used to install and run skillxray."
+    required: false
+    default: "3.12"
+  path:
+    description: >-
+      Skill directory, a SKILL.md, or a directory of skills to scan.
+    required: false
+    default: "."
+  fail-on:
+    description: "Minimum severity that fails the job (critical|high|medium|low|info|none)."
+    required: false
+    default: "high"
+  version:
+    description: >-
+      skillxray version specifier to install from PyPI (e.g. "==0.2.0"). Empty
+      installs the latest release.
+    required: false
+    default: ""
+
+outputs:
+  result:
+    description: "'pass' or 'fail', whether a finding at or above fail-on was found."
+    value: ${{ steps.gate.outputs.result }}
+  sarif-file:
+    description: "Path to the generated SARIF file."
+    value: ${{ steps.sarif.outputs.file }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install skillxray
+      shell: bash
+      run: python3 -m pip install --quiet "skillxray${INPUTS_VERSION}"
+      env:
+        INPUTS_VERSION: ${{ inputs.version }}
+
+    # SARIF is generated with --fail-on none, separately from the gate below,
+    # so the uploaded file carries every finding regardless of the job's own
+    # pass/fail threshold rather than being truncated to it.
+    - name: Generate SARIF
+      id: sarif
+      shell: bash
+      continue-on-error: true
+      run: |
+        set +e
+        out="$RUNNER_TEMP/skillxray.sarif"
+        skillxray "${INPUTS_PATH}" --sarif --fail-on none > "$out" 2>"$RUNNER_TEMP/skillxray-sarif.err"
+        code=$?
+        set -e
+        echo "file=$out" >> "$GITHUB_OUTPUT"
+        if [ "$code" -ne 0 ]; then
+          cat "$RUNNER_TEMP/skillxray-sarif.err" >&2
+        fi
+        exit "$code"
+      env:
+        INPUTS_PATH: ${{ inputs.path }}
+
+    - name: Upload SARIF
+      if: steps.sarif.outcome == 'success'
+      uses: github/codeql-action/upload-sarif@b7351df727350dca84cb9d725d57dcf5bc82ba26 # v3.37.1
+      with:
+        sarif_file: ${{ steps.sarif.outputs.file }}
+
+    - name: Scan (fail-on gate)
+      id: scan
+      shell: bash
+      continue-on-error: true
+      run: |
+        set +e
+        out="$RUNNER_TEMP/skillxray.human"
+        skillxray "${INPUTS_PATH}" --fail-on "${INPUTS_FAIL_ON}" --no-color > "$out" 2>&1
+        code=$?
+        set -e
+        {
+          echo "## skillxray"
+          echo ""
+          echo '```'
+          cat "$out"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit "$code"
+      env:
+        INPUTS_PATH: ${{ inputs.path }}
+        INPUTS_FAIL_ON: ${{ inputs.fail-on }}
+
+    - name: Evaluate gate
+      id: gate
+      if: always()
+      shell: bash
+      run: |
+        if [ "${{ steps.scan.outcome }}" = "success" ]; then
+          echo "result=pass" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "result=fail" >> "$GITHUB_OUTPUT"
+        exit 1

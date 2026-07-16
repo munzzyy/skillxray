@@ -75,6 +75,15 @@ It also speaks SARIF, so findings show up in the GitHub Security tab:
     sarif_file: skillxray.sarif
 ```
 
+Or skip the two steps and use the packaged action, which installs skillxray, scans, and uploads the SARIF in one `uses:` (needs `security-events: write` for the upload):
+
+```yaml
+- uses: munzzyy/skillxray@v0.2.0
+  with:
+    path: ./skills
+    fail-on: high
+```
+
 ### Pre-commit
 
 You can also run skillxray as a pre-commit hook to block dangerous skills from being committed. Add this to your `.pre-commit-config.yaml`:
