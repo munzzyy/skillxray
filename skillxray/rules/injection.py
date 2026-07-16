@@ -52,7 +52,10 @@ _PATTERNS = [
     # those common words.
     (re.compile(r"\b(?:reveal|print|show|repeat|output|disclose|leak|dump)\s+(?:"
                 r"(?:(?:your|the|his|her|its)\s+)?(?:system\s+prompt|initial\s+instructions|system\s+message)|"
-                r"(?:your|the|his|her|its)\s+(?:instructions|prompt)"
+                # Only the self-referential "your instructions/prompt" -- "the
+                # prompt" / "the instructions" is ordinary English ("show the
+                # prompt and the output") and was firing on benign docs.
+                r"your\s+(?:instructions|prompt)"
                 r")\b", _I),
      Severity.HIGH, "System-prompt disclosure attempt",
      "Text tries to get the agent to reveal its system prompt or hidden instructions."),

@@ -65,8 +65,10 @@ _PATTERNS = [
     # exec(eval(compile(base64.b64decode(...)))) is the common obfuscated-
     # payload shape) are both "run this constructed thing," just spelled
     # differently. `eval\s*\(` stops at "evaluate(": after "eval" comes "uate",
-    # not whitespace-then-"(", so it never fires on that word.
-    (re.compile(r"\beval\s+[\"'`$(]|\b(?:eval|exec)\s*\("),
+    # not whitespace-then-"(", so it never fires on that word. The `(?<![.\w])`
+    # keeps the bare builtins (`exec(`, `eval(`) but skips the method call
+    # `regex.exec(str)` -- running a regex, not code -- which is the common tell.
+    (re.compile(r"\beval\s+[\"'`$(]|(?<![.\w])(?:eval|exec)\s*\("),
      Severity.HIGH, "Dynamic shell eval",
      "eval runs a constructed string as a command, which hides what actually executes.",
      "Replace eval with a direct, readable command."),

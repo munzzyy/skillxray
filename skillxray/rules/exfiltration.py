@@ -44,7 +44,10 @@ _SENSITIVE = re.compile(
     r"~/\.config/gh/hosts\.yml|~/\.claude\b|~/\.config/claude|"
     r"Login\s?Data|/Cookies\b|cookies\.sqlite|"
     r"security\s+find-generic-password|"
-    r"\.env(?:\.local|\.production)?\b"
+    # A `.env` *file* read, not the `process.env` / `import.meta.env` property
+    # access that lives in almost every JS file, and not the placeholder
+    # `.env.example` / `.env.sample` templates that never hold real secrets.
+    r"(?<![\w.])\.env(?:\.local|\.production)?\b(?!\.(?:example|sample|template|dist|test))"
     r")",
     _I,
 )
@@ -56,8 +59,11 @@ _EGRESS = re.compile(
     r"requests\.(?:post|put|get|patch)|urllib\.request|urlopen|http\.client|httpx\.|aiohttp|"
     r"\bfetch\s*\(|XMLHttpRequest|axios\.|"
     r"socket\.\w*\(|/dev/tcp/|"
-    r"Invoke-WebRequest|Invoke-RestMethod|"
-    r"https?://"
+    r"Invoke-WebRequest|Invoke-RestMethod"
+    # A bare `https://` URL is not egress on its own -- it's a link in prose or
+    # a base URL constant. Real sending needs one of the verbs/functions above
+    # (curl, fetch(, requests.post, ...), so requiring one kills the "any doc
+    # that mentions a credential path and has a link" false-positive class.
     r")",
     _I,
 )
