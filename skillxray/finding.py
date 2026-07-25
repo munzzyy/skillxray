@@ -122,5 +122,5 @@ def snippet_for(text: str, index: int, width: int = 120) -> str:
         end = len(text)
     line = escape_control_chars(text[start:end].strip())
     if len(line) > width:
-        line = line[: width - 1] + "…"
+        line = line[: width - 1] + "..."
     return line

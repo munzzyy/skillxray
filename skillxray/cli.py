@@ -67,7 +67,7 @@ def main(argv=None) -> int:
     elif args.sarif:
         print(render_sarif(result))
     elif args.quiet:
-        print(f"{result.grade} ({result.grade_score}/100) — "
+        print(f"{result.grade} ({result.grade_score}/100) - "
               f"{sum(result.counts().values())} finding(s), "
               f"hygiene {result.hygiene_passed}/{result.hygiene_total}")
     else:

@@ -4,7 +4,7 @@ reviewer while the model still reads them.
 This is a real and well-documented attack surface for prompt-driven tooling:
   - Bidirectional control characters (Trojan Source, CVE-2021-42574) can reorder
     how source or text renders versus how it is parsed.
-  - Unicode "tag" characters (U+E0000–U+E007F) encode invisible ASCII — the
+  - Unicode "tag" characters (U+E0000-U+E007F) encode invisible ASCII - the
     classic way to hide instructions inside otherwise-plain text.
   - Zero-width and other invisible characters break up words to dodge keyword
     scanners, or hide content entirely.
@@ -101,7 +101,7 @@ def check(unit: SkillUnit) -> list:
                     t, text, i, Severity.MEDIUM,
                     "Unusual line/paragraph separator",
                     f"U+{cp:04X} ({_SEPARATORS[cp]}) is an uncommon separator that some "
-                    "tools render as a newline and others do not — a known way to hide "
+                    "tools render as a newline and others do not - a known way to hide "
                     "a trailing instruction on its own visual line.",
                     "Replace with a normal newline.",
                 ))

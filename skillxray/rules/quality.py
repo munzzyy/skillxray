@@ -18,7 +18,7 @@ _B64_LINE = re.compile(r"^[A-Za-z0-9+/]{500,}={0,2}$", re.MULTILINE)
 
 
 def hygiene_checks(unit: SkillUnit) -> list:
-    """Return [(name, ok, detail)] — the score is passed/total of these."""
+    """Return [(name, ok, detail)] - the score is passed/total of these."""
     checks: list = []
     fm = unit.frontmatter or {}
     has_md = unit.skill_md is not None
@@ -38,7 +38,7 @@ def hygiene_checks(unit: SkillUnit) -> list:
         n = len(desc)
         ok_len = 20 <= n <= 1024
         checks.append(("description length sane", ok_len,
-                       "" if ok_len else f"description is {n} chars (want 20–1024)"))
+                       "" if ok_len else f"description is {n} chars (want 20-1024)"))
 
     if has_md:
         words = len(unit.skill_md.text.split())

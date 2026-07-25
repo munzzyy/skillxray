@@ -1,5 +1,5 @@
 """Labeled-corpus gate. Every malicious fixture must be caught (recall) and every
-benign fixture must stay clean (precision). These are the floors CI enforces — a
+benign fixture must stay clean (precision). These are the floors CI enforces - a
 rule change that starts missing real attacks or flagging safe skills fails here.
 """
 
@@ -49,7 +49,7 @@ class BenignPrecision(unittest.TestCase):
                         and f.severity >= Severity.HIGH]
                 self.assertEqual(loud, [], f"{root.name}: false positives {[f.title for f in loud]}")
                 self.assertIn(r.grade, ("A", "B"),
-                              f"{root.name}: grade {r.grade} — unexpected penalty")
+                              f"{root.name}: grade {r.grade} - unexpected penalty")
 
 
 if __name__ == "__main__":

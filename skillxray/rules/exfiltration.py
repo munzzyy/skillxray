@@ -1,5 +1,5 @@
 """Detect data-exfiltration shapes: reading sensitive files, and sending data to
-collector/tunnel endpoints. The strongest signal is the combination — a file
+collector/tunnel endpoints. The strongest signal is the combination - a file
 that both reads secrets AND has a way to send them off the machine.
 """
 
@@ -98,7 +98,7 @@ def check(unit: SkillUnit) -> list:
             m = sens[0]
             findings.append(_mk(t, text, m.start(), Severity.CRITICAL,
                 "Reads sensitive files and can send them out",
-                f"This file references credential material ({m.group(0)!r}) and also contains network-egress code — the shape of a credential stealer.",
+                f"This file references credential material ({m.group(0)!r}) and also contains network-egress code - the shape of a credential stealer.",
                 "Separate any legitimate file access from network calls, and never read credential stores."))
         else:
             for m in sens:

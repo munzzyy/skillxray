@@ -8,7 +8,7 @@ A "skill unit" is one of:
 We deliberately avoid a YAML dependency. Frontmatter is parsed by a small,
 tolerant reader that handles the scalars and simple lists skills actually use
 (name, description, license, allowed-tools). It is not a general YAML parser and
-does not try to be — it only needs enough to reason about a handful of keys.
+does not try to be - it only needs enough to reason about a handful of keys.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ SCRIPT_EXTS = {
     ".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".cjs", ".ts", ".rb",
     ".pl", ".ps1",
 }
-# SKILL.md is intentionally NOT here — it is markdown prose (with frontmatter),
+# SKILL.md is intentionally NOT here - it is markdown prose (with frontmatter),
 # and the command/injection rules need to read it as markdown. Its manifest-like
 # frontmatter is handled through unit.frontmatter, not the file kind.
 MANIFEST_NAMES = {
@@ -130,7 +130,7 @@ def parse_frontmatter(text: str) -> dict:
     """Read the leading `---` fenced block into a flat dict.
 
     Supports `key: value`, quoted values, and simple block/inline lists. Nested
-    mappings are ignored (returned as raw strings) — good enough for the keys we
+    mappings are ignored (returned as raw strings) - good enough for the keys we
     care about, and never raises on malformed input.
     """
     if not text.startswith("---"):

@@ -148,7 +148,7 @@ def render_sarif(result: ScanResult) -> str:
 
 
 def _sec_severity(sev: Severity) -> str:
-    # GitHub code-scanning numeric band (0.0–10.0).
+    # GitHub code-scanning numeric band (0.0-10.0).
     return {
         Severity.CRITICAL: "9.5",
         Severity.HIGH: "8.0",

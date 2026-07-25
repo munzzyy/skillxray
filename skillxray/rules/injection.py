@@ -26,7 +26,7 @@ _I = re.IGNORECASE
 _PATTERNS = [
     (re.compile(r"\bignore\s+(?:all\s+|any\s+)?(?:the\s+|your\s+)?(?:previous|prior|above|earlier|preceding|foregoing)\s+(?:instructions?|prompts?|context|rules?|messages?|directions?)", _I),
      Severity.HIGH, "Instruction-override phrasing",
-     "Text tells the agent to ignore previous instructions — a classic prompt-injection payload."),
+     "Text tells the agent to ignore previous instructions - a classic prompt-injection payload."),
     (re.compile(r"\bdisregard\s+(?:all\s+|any\s+)?(?:the\s+|your\s+|previous\s+|prior\s+|above\s+|system\s+)?(?:instructions?|prompts?|rules?|guidelines?|context)", _I),
      Severity.HIGH, "Instruction-override phrasing",
      "Text tells the agent to disregard its instructions or guidelines."),
@@ -94,7 +94,7 @@ def check(unit: SkillUnit) -> list:
     findings: list = []
     for t in text_targets(unit, kinds=("markdown", "manifest")):
         # For manifests we only care about a description field, not JSON keys;
-        # scanning the whole text is fine — patterns are specific enough.
+        # scanning the whole text is fine - patterns are specific enough.
         text = t.text
         for rx, sev, title, detail in _PATTERNS:
             for m in rx.finditer(text):

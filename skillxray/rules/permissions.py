@@ -13,7 +13,7 @@ from ..discovery import SkillUnit
 
 RULE_ID = "SX-PRM"
 
-# Claude Code hook events — a command under any of these runs shell automatically
+# Claude Code hook events - a command under any of these runs shell automatically
 # when the event fires, without the model choosing to.
 _HOOK_EVENTS = {
     "PreToolUse", "PostToolUse", "UserPromptSubmit", "Notification",
@@ -59,7 +59,7 @@ def _allowed_tools(unit: SkillUnit) -> list:
     elif any("bash" in i or "shell" in i for i in lowered):
         findings.append(_mk(RULE_ID, Category.PERMISSION, Severity.INFO, rel,
             "Skill can run shell commands",
-            "The frontmatter grants Bash/shell. Combined with any injected instruction, that is arbitrary command execution — worth confirming it is needed.",
+            "The frontmatter grants Bash/shell. Combined with any injected instruction, that is arbitrary command execution - worth confirming it is needed.",
             "Keep shell access only if the skill genuinely runs commands."))
     return findings
 
@@ -90,7 +90,7 @@ def _scan_hooks(rel: str, data) -> list:
         for cmd in commands:
             findings.append(_mk(RULE_ID, Category.PERMISSION, Severity.HIGH, rel,
                 f"Auto-running hook on {event}",
-                f"A {event} hook runs `{_trim(cmd)}` automatically when the event fires — shell execution with the model out of the loop. Review it as carefully as any executable.",
+                f"A {event} hook runs `{_trim(cmd)}` automatically when the event fires - shell execution with the model out of the loop. Review it as carefully as any executable.",
                 "Confirm the hook command is safe and expected; auto-run hooks are a direct code-execution path."))
     return findings
 
@@ -139,7 +139,7 @@ def _scan_mcp(rel: str, data) -> list:
 
 def _trim(s: str, n: int = 80) -> str:
     s = escape_control_chars(" ".join(str(s).split()))
-    return s if len(s) <= n else s[: n - 1] + "…"
+    return s if len(s) <= n else s[: n - 1] + "..."
 
 
 def _mk(rule_id, category, severity, rel, title, detail, remediation) -> Finding:

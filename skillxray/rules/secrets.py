@@ -62,7 +62,7 @@ def check(unit: SkillUnit) -> list:
                 findings.append(_mk(t, text, m.start(), sev,
                     f"Hardcoded {label}",
                     f"A {label} appears to be committed into the skill.",
-                    "Remove the credential and rotate it — anything pushed to git is compromised. Load secrets from the environment at runtime."))
+                    "Remove the credential and rotate it - anything pushed to git is compromised. Load secrets from the environment at runtime."))
         for rx in (_GENERIC, _GENERIC_UNQUOTED):
             for m in rx.finditer(text):
                 value = m.group(2).strip()
