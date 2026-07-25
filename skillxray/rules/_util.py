@@ -50,10 +50,21 @@ def iter_matches(pattern: re.Pattern, text: str) -> Iterator[re.Match]:
 
 
 # Fenced code blocks in markdown, so command rules can look at examples too.
-_FENCE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
+# Both backtick and tilde fences count, and the backreference keeps one fence
+# style from being closed by the other.
+_FENCE = re.compile(r"(```|~~~)[^\n]*\n(.*?)\1", re.DOTALL)
+
+# Indented code blocks: runs of lines that start with a tab or >=4 spaces.
+_INDENT_BLOCK = re.compile(r"(?:^(?: {4,}|\t)[^\n]*\n?)+", re.MULTILINE)
 
 
 def code_blocks(text: str) -> Iterator[tuple[int, str]]:
     """Yield (start_index, block_text) for each fenced block."""
     for m in _FENCE.finditer(text):
-        yield m.start(1), m.group(1)
+        yield m.start(2), m.group(2)
+
+
+def indented_blocks(text: str) -> Iterator[tuple[int, str]]:
+    """Yield (start_index, block_text) for each indented code block."""
+    for m in _INDENT_BLOCK.finditer(text):
+        yield m.start(), m.group()

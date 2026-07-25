@@ -56,10 +56,24 @@ def _is_tag_char(cp: int) -> bool:
     return 0xE0000 <= cp <= 0xE007F
 
 
+def _is_variation_selector(cp: int) -> bool:
+    # VS1-VS16 and the Variation Selectors Supplement (VS17-VS256).
+    return 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF
+
+
+def _decode_selector(cp: int) -> int:
+    # Butler's variation-selector smuggling maps a byte 0-255 to a selector:
+    # 0-15 -> U+FE00..U+FE0F, 16-255 -> U+E0100..U+E01EF.
+    if 0xFE00 <= cp <= 0xFE0F:
+        return cp - 0xFE00
+    return cp - 0xE0100 + 16
+
+
 def check(unit: SkillUnit) -> list:
     findings: list = []
     for t in text_targets(unit):
         text = t.text
+        findings.extend(_variation_selector_runs(t, text))
         # A BOM at position 0 is benign and common; only flag it mid-file.
         for i, ch in enumerate(text):
             cp = ord(ch)
@@ -102,6 +116,44 @@ def check(unit: SkillUnit) -> list:
                        "It carries no visible meaning here."),
                     "Delete the invisible character.",
                 ))
+    return findings
+
+
+def _variation_selector_runs(target, text: str) -> list:
+    """Flag runs of 2+ back-to-back variation selectors.
+
+    A lone selector is ordinary (emoji glyph variant, CJK IVS), so we ignore it.
+    Two or more in a row is the smuggling channel: each selector carries a byte,
+    so a run spells out hidden ASCII a model reads and a human never sees. We
+    decode the run and surface whatever printable text it hides.
+    """
+    findings: list = []
+    n = len(text)
+    i = 0
+    while i < n:
+        if not _is_variation_selector(ord(text[i])):
+            i += 1
+            continue
+        start = i
+        while i < n and _is_variation_selector(ord(text[i])):
+            i += 1
+        if i - start < 2:
+            continue
+        decoded = bytes(_decode_selector(ord(c)) for c in text[start:i])
+        try:
+            hidden = decoded.decode("ascii")
+        except UnicodeDecodeError:
+            hidden = decoded.decode("latin-1")
+        printable = "".join(c if 32 <= ord(c) < 127 else "." for c in hidden)
+        findings.append(_f(
+            target, text, start, Severity.CRITICAL,
+            "Hidden Unicode variation-selector payload",
+            f"A run of {i - start} variation selectors is appended to the text. "
+            "These are invisible and each one carries a byte, the standard way to "
+            "smuggle hidden ASCII a model reads but a human never sees. "
+            f"Decodes to: {printable!r}",
+            "Remove the variation selectors. Text should say only what it appears to say.",
+        ))
     return findings
 
 

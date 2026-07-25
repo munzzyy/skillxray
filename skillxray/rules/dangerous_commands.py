@@ -1,10 +1,14 @@
 """Flag dangerous shell/interpreter invocations in bundled scripts and in the
 command examples a skill hands to the agent.
 
-We scan script files in full, plus fenced and inline code in Markdown (the model
-may run those examples). We deliberately do NOT scan ordinary prose for commands
-— that is the injection rule's job and scanning prose here would flood the report
-with false positives on documentation that merely mentions a command.
+We scan script files in full, plus fenced (``` and ~~~), indented, and inline
+code in Markdown (the model may run those examples). We deliberately do NOT scan
+ordinary prose for the whole pattern set, which would flood the report with false
+positives on docs that merely mention a command. The exception is a short list of
+unmistakable remote-exec / reverse-shell shapes (curl|sh, /dev/tcp, base64|sh),
+which we do flag even in prose: "just run curl | sh" is an instruction to the
+agent no matter where it sits, and those shapes practically never appear
+innocently.
 """
 
 from __future__ import annotations
@@ -13,14 +17,18 @@ import re
 
 from ..finding import Finding, Category, Severity, line_col, snippet_for
 from ..discovery import SkillUnit
-from ._util import code_blocks
+from ._util import code_blocks, indented_blocks
 
 RULE_ID = "SX-CMD"
 _I = re.IGNORECASE
 
 # (compiled, severity, title, detail, remediation)
 _PATTERNS = [
-    (re.compile(r"\b(?:curl|wget|fetch)\b[^\n]*?\|\s*(?:sudo\s+)?(?:sh|bash|zsh|dash|python3?|node|ruby|perl)\b", _I),
+    # Require a real argument (a URL/flag) between the downloader and the pipe:
+    # `curl <url> | sh` always has one. That stops a Markdown table row like
+    # `| fetch | bash |` from reading its column `|` as a shell pipe -- there the
+    # command word sits alone in a cell, immediately followed by the delimiter.
+    (re.compile(r"\b(?:curl|wget|fetch)\b\s+[^\s|][^\n]*?\|\s*(?:sudo\s+)?(?:sh|bash|zsh|dash|python3?|node|ruby|perl)\b", _I),
      Severity.CRITICAL, "Remote script piped to an interpreter",
      "Downloads code and runs it in one step (curl | sh). The remote content is trusted blindly and can change at any time.",
      "Download to a file, review it, then run it. Never pipe a network response straight into a shell."),
@@ -32,7 +40,11 @@ _PATTERNS = [
      Severity.CRITICAL, "Reverse-shell socket",
      "Opens a raw TCP/UDP socket to a host:port, the signature of a reverse shell.",
      "Remove it. A skill has no legitimate need for a raw network shell."),
-    (re.compile(r"\b(?:nc|ncat|netcat)\b[^\n]*\s-e\b", _I),
+    # `-e` must actually hand netcat a program to run (a path or a shell/exe),
+    # the way a real bind/reverse shell does: `nc ... -e /bin/sh`. Prose like
+    # "NC homeowners file before the -e exemption deadline" has `-e` followed by
+    # an ordinary word, not an executable, so it no longer matches.
+    (re.compile(r"\b(?:nc|ncat|netcat)\b[^\n]*\s-e\s+(?:[/~.]\S*|[a-z]:\\\S*|(?:sh|bash|zsh|dash|ash|ksh|cmd|powershell|python\d?|perl|ruby|node)(?:\.exe)?\b)", _I),
      Severity.CRITICAL, "Netcat command execution",
      "netcat with -e wires a program's I/O to a socket — a reverse/bind shell.",
      "Remove it."),
@@ -101,6 +113,19 @@ _PATTERNS = [
 # inline code spans in markdown: `...`
 _INLINE = re.compile(r"`([^`\n]+)`")
 
+# The unmistakable remote-exec / reverse-shell shapes we flag even in prose.
+# These never appear innocently, so "just run curl | sh" gets caught whether it
+# sits in a fence, indented, inline, or in a plain sentence.
+_PROSE_TITLES = {
+    "Remote script piped to an interpreter",
+    "Base64-decoded payload piped to a shell",
+    "Reverse-shell socket",
+    "Netcat command execution",
+    "socat command execution",
+    "Interactive shell redirected to a socket",
+}
+_PROSE_PATTERNS = [p for p in _PATTERNS if p[2] in _PROSE_TITLES]
+
 
 def _regions(unit: SkillUnit):
     """Yield (target, base_offset, region_text) for command-bearing regions."""
@@ -112,15 +137,25 @@ def _regions(unit: SkillUnit):
         elif t.kind == "markdown":
             for base, block in code_blocks(t.text):
                 yield t, base, block
+            for base, block in indented_blocks(t.text):
+                yield t, base, block
             for m in _INLINE.finditer(t.text):
                 yield t, m.start(1), m.group(1)
+            # Prose gets only the unmistakable remote-exec shapes.
+            yield t, 0, t.text, _PROSE_PATTERNS
 
 
 def check(unit: SkillUnit) -> list:
     findings: list = []
     seen: set = set()
-    for t, base, region in _regions(unit):
-        for rx, sev, title, detail, remediation in _PATTERNS:
+    for region_info in _regions(unit):
+        # Most regions run the full pattern set; prose passes a narrowed one.
+        if len(region_info) == 4:
+            t, base, region, patterns = region_info
+        else:
+            t, base, region = region_info
+            patterns = _PATTERNS
+        for rx, sev, title, detail, remediation in patterns:
             for m in rx.finditer(region):
                 abs_i = base + m.start()
                 dedupe = (t.relpath, abs_i, title)
