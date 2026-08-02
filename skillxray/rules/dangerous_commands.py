@@ -20,6 +20,15 @@ from ..discovery import SkillUnit
 from ._util import code_blocks, indented_blocks
 
 RULE_ID = "SX-CMD"
+RULE_NAME = "Dangerous commands"
+RULE_DESCRIPTION = (
+    "Shell and interpreter invocations that no honest skill needs: remote "
+    "scripts piped into a shell, base64 payloads decoded into an interpreter, "
+    "reverse shells, destructive deletes, and persistence writes."
+)
+RULE_TAGS = ("security", "AST01")
+RULE_LEVEL = "error"
+
 _I = re.IGNORECASE
 
 # (compiled, severity, title, detail, remediation)
@@ -132,7 +141,11 @@ def _regions(unit: SkillUnit):
     for t in unit.files:
         if not t.is_text:
             continue
-        if t.kind == "script":
+        # `data` covers config files and anything that decoded as text without a
+        # recognized extension. It has no markdown fences, so full-text is the
+        # right read - and skipping it is how an extensionless installer used to
+        # score a clean A.
+        if t.kind in ("script", "data"):
             yield t, 0, t.text
         elif t.kind == "markdown":
             for base, block in code_blocks(t.text):

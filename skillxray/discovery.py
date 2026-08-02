@@ -13,19 +13,25 @@ does not try to be - it only needs enough to reason about a handful of keys.
 
 from __future__ import annotations
 
+import fnmatch
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-TEXT_EXTS = {
-    ".md", ".markdown", ".txt", ".sh", ".bash", ".zsh", ".py", ".js", ".mjs",
-    ".cjs", ".ts", ".rb", ".pl", ".ps1", ".json", ".yaml", ".yml", ".toml",
-    ".cfg", ".ini", ".env", ".rst",
-}
+# Anything that can carry executable logic. Windows batch and PowerShell modules
+# belong here as much as .sh does: a payload in setup.bat is still a payload, and
+# leaving an extension out of this set means the command and exfiltration rules
+# never read the file at all.
 SCRIPT_EXTS = {
     ".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".cjs", ".ts", ".rb",
-    ".pl", ".ps1",
+    ".pl", ".ps1", ".psm1", ".psd1", ".bat", ".cmd", ".fish", ".ksh",
+    ".command", ".tcl", ".lua", ".php",
+}
+TEXT_EXTS = SCRIPT_EXTS | {
+    ".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".toml",
+    ".cfg", ".ini", ".env", ".rst",
 }
 # SKILL.md is intentionally NOT here - it is markdown prose (with frontmatter),
 # and the command/injection rules need to read it as markdown. Its manifest-like
@@ -37,6 +43,14 @@ MANIFEST_NAMES = {
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist",
              "build", ".mypy_cache", ".pytest_cache", ".idea", ".vscode"}
 MAX_FILE_BYTES = 2_000_000  # skip anything larger; skills should be small
+
+# A shebang line naming a real interpreter. Extension lists always have holes,
+# so the file's own first line gets the final say: an extensionless `install`
+# that starts with `#!/bin/bash` is a script whatever it is called.
+_SHEBANG = re.compile(
+    r"^#!\s*\S*?\b(?:sh|bash|zsh|dash|ksh|fish|tcsh|csh|python[0-9.]*|perl|ruby|"
+    r"node|deno|bun|php|lua|tclsh|osascript|pwsh|powershell|env)\b"
+)
 
 
 def classify(path: Path) -> str:
@@ -96,10 +110,16 @@ def _read(path: Path, root: Path) -> Optional[ScanTarget]:
     except OSError:
         return None
     kind = classify(path)
+    # Relative paths are emitted verbatim into the report, into JSON, and into
+    # SARIF artifactLocation.uri, which must be a forward-slash URI reference.
+    # Normalize once here so every renderer agrees and Windows output is usable.
     try:
         rel = str(path.relative_to(root))
     except ValueError:
         rel = path.name
+    rel = rel.replace(os.sep, "/")
+    if os.altsep:
+        rel = rel.replace(os.altsep, "/")
     target = ScanTarget(path=path, relpath=rel, kind=kind, raw=raw, oversized=oversized)
     if kind == "binary":
         # Salvage files with an unknown extension that are really UTF-8 text
@@ -116,14 +136,53 @@ def _read(path: Path, root: Path) -> Optional[ScanTarget]:
         except UnicodeDecodeError:
             target.text = raw.decode("utf-8", errors="replace")
             target.decode_error = True
+    # The shebang wins over the extension, but never demotes markdown or a
+    # manifest: those are read whole by their own rules already.
+    if target.kind == "data" and _SHEBANG.match(target.text):
+        target.kind = "script"
     return target
 
 
-def _iter_files(root: Path):
+def _norm(rel: str) -> str:
+    rel = rel.replace(os.sep, "/")
+    return rel.replace(os.altsep, "/") if os.altsep else rel
+
+
+def excluded(rel: str, patterns) -> bool:
+    """True if a scan-root-relative path matches any --exclude glob.
+
+    Matching happens on the POSIX-normalized form so one glob behaves the same
+    on Windows, and a bare directory glob covers everything under it.
+    """
+    if not patterns:
+        return False
+    rel = _norm(rel)
+    for pat in patterns:
+        pat = _norm(pat)
+        if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(rel, pat.rstrip("/") + "/*"):
+            return True
+    return False
+
+
+def _rel_to(path: Path, base: Path) -> str:
+    try:
+        return _norm(str(path.relative_to(base)))
+    except ValueError:
+        return _norm(str(path))
+
+
+def _iter_files(root: Path, rel_base: Path, exclude=()):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in SKIP_DIRS
+            and not excluded(_rel_to(Path(dirpath) / d, rel_base), exclude)
+        ]
         for fn in filenames:
-            yield Path(dirpath) / fn
+            fp = Path(dirpath) / fn
+            if excluded(_rel_to(fp, rel_base), exclude):
+                continue
+            yield fp
 
 
 def parse_frontmatter(text: str) -> dict:
@@ -202,14 +261,24 @@ def _scalar(v: str):
     return v
 
 
-def discover(path: Path) -> list:
-    """Return the skill units under `path` (or the single unit it names)."""
+def discover(path: Path, rel_base: Optional[Path] = None, exclude=()) -> list:
+    """Return the skill units under `path` (or the single unit it names).
+
+    `rel_base` is the path the user actually asked for. Every finding's file is
+    reported relative to it, so a scan of a folder of skills says
+    `alpha/SKILL.md` instead of a bare `SKILL.md` that nothing can be traced to.
+    """
     path = Path(path)
     units: list = []
+    if rel_base is None:
+        rel_base = path if path.is_dir() else path.parent
 
     if path.is_file() and path.name.lower() == "skill.md":
-        root = path.parent
-        unit = _build_unit(root, kind="skill", limit_to_file=path)
+        # Scan the whole skill, not just the markdown. Pre-commit hands us the
+        # SKILL.md path and nothing else, and most payloads live in a sibling
+        # script - limiting the unit to one file meant the hook the README
+        # advertises passed every skill whose payload was not inline.
+        unit = _build_unit(path.parent, kind="skill", rel_base=rel_base, exclude=exclude)
         if unit:
             units.append(unit)
         return units
@@ -220,7 +289,7 @@ def discover(path: Path) -> list:
     # A directory that is itself a single skill/plugin.
     direct = _unit_kind(path)
     if direct:
-        unit = _build_unit(path, kind=direct)
+        unit = _build_unit(path, kind=direct, rel_base=rel_base, exclude=exclude)
         if unit:
             units.append(unit)
         return units
@@ -228,21 +297,25 @@ def discover(path: Path) -> list:
     # Otherwise treat it as a collection: find nested skill/plugin roots.
     seen_roots: set = set()
     for dirpath, dirnames, filenames in os.walk(path):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in SKIP_DIRS
+            and not excluded(_rel_to(Path(dirpath) / d, rel_base), exclude)
+        ]
         d = Path(dirpath)
         kind = _unit_kind(d)
         if kind and d not in seen_roots:
             # avoid nesting a skill inside an already-claimed plugin root
             if any(str(d).startswith(str(r) + os.sep) for r in seen_roots):
                 continue
-            unit = _build_unit(d, kind=kind)
+            unit = _build_unit(d, kind=kind, rel_base=rel_base, exclude=exclude)
             if unit:
                 units.append(unit)
                 seen_roots.add(d)
     if not units:
         # No formal skill markers: scan the directory as a loose unit so the
         # user still gets results instead of silence.
-        unit = _build_unit(path, kind="loose")
+        unit = _build_unit(path, kind="loose", rel_base=rel_base, exclude=exclude)
         if unit and unit.files:
             units.append(unit)
     return units
@@ -256,21 +329,17 @@ def _unit_kind(d: Path) -> Optional[str]:
     return None
 
 
-def _build_unit(root: Path, kind: str, limit_to_file: Optional[Path] = None) -> Optional[SkillUnit]:
+def _build_unit(root: Path, kind: str, rel_base: Optional[Path] = None,
+                exclude=()) -> Optional[SkillUnit]:
     unit = SkillUnit(root=root, kind=kind)
-    if limit_to_file is not None:
-        t = _read(limit_to_file, root)
-        if t:
-            unit.files.append(t)
+    base = root if rel_base is None else rel_base
+    for fp in _iter_files(root, base, exclude):
+        t = _read(fp, base)
+        if t is None:
+            continue
+        unit.files.append(t)
+        if fp.name.lower() == "skill.md" and unit.skill_md is None:
             unit.skill_md = t
-    else:
-        for fp in _iter_files(root):
-            t = _read(fp, root)
-            if t is None:
-                continue
-            unit.files.append(t)
-            if fp.name.lower() == "skill.md" and unit.skill_md is None:
-                unit.skill_md = t
     if unit.skill_md is not None:
         unit.frontmatter = parse_frontmatter(unit.skill_md.text)
     return unit

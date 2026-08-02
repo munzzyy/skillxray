@@ -12,6 +12,15 @@ from ..discovery import SkillUnit
 from ._util import text_targets
 
 RULE_ID = "SX-EXF"
+RULE_NAME = "Data exfiltration"
+RULE_DESCRIPTION = (
+    "Reads of credential material paired with a way to send it off the machine, "
+    "plus references to paste, webhook, and tunnel endpoints whose purpose is "
+    "receiving data out of band."
+)
+RULE_TAGS = ("security", "AST01")
+RULE_LEVEL = "error"
+
 _I = re.IGNORECASE
 
 # Endpoints whose whole purpose is receiving exfiltrated data / out-of-band callbacks.
@@ -74,7 +83,9 @@ _ENV_EXFIL = re.compile(r"\b(?:printenv|env|set)\b[^\n|]*\|\s*(?:curl|wget|nc|nc
 
 def check(unit: SkillUnit) -> list:
     findings: list = []
-    for t in text_targets(unit, kinds=("script", "markdown", "manifest")):
+    # `data` is in here too: a file with no recognized extension that decoded as
+    # text is exactly where a credential stealer hides from an extension list.
+    for t in text_targets(unit, kinds=("script", "markdown", "manifest", "data")):
         text = t.text
 
         for m in _ENV_EXFIL.finditer(text):
