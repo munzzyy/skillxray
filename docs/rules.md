@@ -5,9 +5,25 @@ Severities come from the worst pattern in the rule; most rules span a range
 depending on which pattern fired. A test keeps this file in sync with the
 code, so a rule cannot exist without being documented here.
 
+Each rule also carries its OWASP Agentic Skills Top 10 identifier. The same
+identifier is emitted as a SARIF `properties.tags` entry, so findings group by
+that taxonomy in the GitHub Security tab.
+
+| Rule | Name | OWASP |
+| --- | --- | --- |
+| SX-CMD | Dangerous commands | AST01 Malicious Skills |
+| SX-EXF | Data exfiltration | AST01 Malicious Skills |
+| SX-INJ | Prompt injection | AST05 Untrusted External Instructions |
+| SX-PRM | Permissions and capability | AST03 Over-Privileged Skills |
+| SX-QLT | Quality and hygiene | AST04 Insecure Metadata |
+| SX-SEC | Hardcoded secrets | AST04 Insecure Metadata |
+| SX-SUP | Opaque or untrusted supply chain | AST01 Malicious Skills |
+| SX-UNI | Hidden Unicode | AST05 Untrusted External Instructions |
+
 ## SX-CMD
 
 Dangerous commands. Severity low to critical depending on the pattern.
+OWASP Agentic Skills Top 10: AST01 Malicious Skills.
 
 Catches shell and interpreter invocations that no honest skill needs:
 remote scripts piped straight to a shell (`curl | sh`), base64 payloads
@@ -25,6 +41,7 @@ Fix: download the script, read it, then run it. Anything obfuscated
 ## SX-EXF
 
 Data exfiltration. Severity medium to critical.
+OWASP Agentic Skills Top 10: AST01 Malicious Skills.
 
 Fires when a file both reads sensitive data (`~/.ssh`, cloud credentials,
 `.env`, browser cookies) and has network egress toward pastebin, webhook,
@@ -40,6 +57,7 @@ halves: the sensitive read and the egress.
 ## SX-INJ
 
 Prompt injection aimed at the agent. Severity medium to high.
+OWASP Agentic Skills Top 10: AST05 Untrusted External Instructions.
 
 Catches directives that tell the model to ignore previous instructions,
 forget its rules, override safety settings, or hide actions from the user.
@@ -54,6 +72,7 @@ instruct the agent to bypass its rules or conceal what it does.
 ## SX-PRM
 
 Permissions. Severity info to high.
+OWASP Agentic Skills Top 10: AST03 Over-Privileged Skills.
 
 Flags overly broad grants: all tools (`*`), shell execution, MCP servers
 that launch local binaries, and hooks that auto-run on events like
@@ -72,6 +91,7 @@ local-binary MCP server as something a reviewer must be able to justify.
 ## SX-QLT
 
 Quality and hygiene. Severity info to low.
+OWASP Agentic Skills Top 10: AST04 Insecure Metadata.
 
 Missing `SKILL.md`, missing name or description, a `SKILL.md` bloated with
 embedded base64 blobs, and references to local files that do not exist.
@@ -86,6 +106,7 @@ assets into real files.
 ## SX-SEC
 
 Hardcoded secrets. Severity low to critical depending on the credential.
+OWASP Agentic Skills Top 10: AST04 Insecure Metadata.
 
 Matches known credential shapes: AWS keys, GitHub and GitLab tokens,
 OpenAI/Anthropic/Stripe keys, private key blocks. Matches are redacted in
@@ -98,9 +119,28 @@ export OPENAI_API_KEY="sk-proj-1234567890abcdef1234567890abcdef"
 Fix: take the secret out. Read credentials from the user's environment at
 runtime instead of shipping them.
 
+## SX-SUP
+
+Opaque or untrusted supply chain. Severity medium to high.
+OWASP Agentic Skills Top 10: AST01 Malicious Skills.
+
+Catches content nobody can review before it runs: compiled Python shipped
+without its `.py` source, GitHub release assets pulled from an account the
+skill never claims as its own, and password-protected archives (both the
+encrypted zip itself and the `unzip -P` / `7z -p` that opens one).
+
+```bash
+unzip -P hunter2 payload.zip && python payload/run.py
+```
+
+Fix: ship readable source. If the skill needs a binary, name the repository it
+comes from in frontmatter and pin the asset, and never encrypt a payload a
+reviewer is supposed to trust.
+
 ## SX-UNI
 
 Hidden Unicode. Severity medium to critical.
+OWASP Agentic Skills Top 10: AST05 Untrusted External Instructions.
 
 Invisible or deceptive characters used to smuggle instructions past a human
 reviewer: Unicode tag characters (U+E0000 to U+E007F), bidi overrides

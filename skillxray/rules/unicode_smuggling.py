@@ -20,6 +20,14 @@ from ..discovery import SkillUnit
 from ._util import text_targets
 
 RULE_ID = "SX-UNI"
+RULE_NAME = "Hidden Unicode"
+RULE_DESCRIPTION = (
+    "Invisible or deceptive characters that hide instructions from a human "
+    "reviewer while the model still reads them: tag characters, bidi overrides, "
+    "variation-selector payloads, and zero-width splitters."
+)
+RULE_TAGS = ("security", "AST05")
+RULE_LEVEL = "error"
 
 # name -> (severity, human description)
 _INVISIBLE = {

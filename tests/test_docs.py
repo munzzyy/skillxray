@@ -1,9 +1,12 @@
 """docs/rules.md drift check: every RULE_ID in the code appears as a heading
-in the doc, and the doc documents nothing that no longer exists."""
+in the doc, the doc documents nothing that no longer exists, and every rule
+carries the SARIF metadata the Security tab needs."""
 
 import re
 import unittest
 from pathlib import Path
+
+from skillxray.rules import RULE_METADATA
 
 ROOT = Path(__file__).parent.parent
 
@@ -35,3 +38,30 @@ class RulesDoc(unittest.TestCase):
 
     def test_doc_is_not_empty(self):
         self.assertGreaterEqual(len(_rule_ids_in_doc()), 5)
+
+
+class RuleMetadata(unittest.TestCase):
+    def test_every_rule_has_sarif_metadata(self):
+        self.assertEqual(set(RULE_METADATA), _rule_ids_in_code())
+        for rid, meta in RULE_METADATA.items():
+            with self.subTest(rule=rid):
+                self.assertTrue(meta["name"], rid)
+                self.assertGreater(len(meta["description"]), 40, rid)
+                self.assertIn(meta["level"], ("error", "warning", "note"), rid)
+                self.assertTrue(meta["help_uri"].endswith("#" + rid.lower()), rid)
+
+    def test_every_rule_declares_one_owasp_tag(self):
+        for rid, meta in RULE_METADATA.items():
+            with self.subTest(rule=rid):
+                ast = [t for t in meta["tags"] if re.fullmatch(r"AST\d{2}", t)]
+                self.assertEqual(len(ast), 1, f"{rid} tags: {meta['tags']}")
+
+    def test_owasp_tags_are_documented(self):
+        doc = (ROOT / "docs" / "rules.md").read_text()
+        for rid, meta in RULE_METADATA.items():
+            ast = next(t for t in meta["tags"] if re.fullmatch(r"AST\d{2}", t))
+            section = re.search(r"^## %s\n(.*?)(?=^## |\Z)" % rid, doc, re.M | re.S)
+            with self.subTest(rule=rid):
+                self.assertIsNotNone(section, rid)
+                self.assertIn(ast, section.group(1),
+                              f"{rid} is tagged {ast} in code but its docs section does not say so")

@@ -12,6 +12,13 @@ from ..finding import Finding, Category, Severity, escape_control_chars
 from ..discovery import SkillUnit
 
 RULE_ID = "SX-PRM"
+RULE_NAME = "Permissions and capability"
+RULE_DESCRIPTION = (
+    "What the skill is allowed to do: broad tool grants, MCP servers that launch "
+    "local binaries, and hooks that run shell automatically on an event."
+)
+RULE_TAGS = ("security", "AST03")
+RULE_LEVEL = "warning"
 
 # Claude Code hook events - a command under any of these runs shell automatically
 # when the event fires, without the model choosing to.
@@ -120,19 +127,24 @@ def _scan_mcp(rel: str, data) -> list:
     for sname, cfg in servers.items():
         if not isinstance(cfg, dict):
             continue
+        # The server name is a JSON key and the url is a JSON value, both read
+        # straight out of an untrusted manifest. They get the same control-byte
+        # escaping as any other scanned text, or a crafted plugin.json can paint
+        # a forged verdict into the report with terminal escape sequences.
+        safe_name = _trim(sname)
         cmd = cfg.get("command")
         if cmd:
             args = cfg.get("args") or []
             full = " ".join([str(cmd)] + [str(a) for a in args]) if isinstance(args, list) else str(cmd)
             sev = Severity.MEDIUM if str(cmd) in ("npx", "uvx", "bunx", "pnpm", "yarn") else Severity.HIGH
             findings.append(_mk(RULE_ID, Category.PERMISSION, sev, rel,
-                f"MCP server '{sname}' launches a local process",
+                f"MCP server '{safe_name}' launches a local process",
                 f"Starts `{_trim(full)}`. Whatever that command resolves to runs on the machine with the skill's trust.",
                 "Confirm the command and any fetched package are trusted and pinned."))
         elif cfg.get("url"):
             findings.append(_mk(RULE_ID, Category.PERMISSION, Severity.INFO, rel,
-                f"MCP server '{sname}' is remote",
-                f"Connects to {cfg.get('url')}. Tool definitions come from that server and are outside this skill's control.",
+                f"MCP server '{safe_name}' is remote",
+                f"Connects to {_trim(cfg.get('url'))}. Tool definitions come from that server and are outside this skill's control.",
                 "Make sure the remote server is one you trust."))
     return findings
 

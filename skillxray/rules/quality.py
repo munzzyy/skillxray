@@ -11,6 +11,14 @@ from ..finding import Finding, Category, Severity, escape_control_chars
 from ..discovery import MAX_FILE_BYTES, SkillUnit
 
 RULE_ID = "SX-QLT"
+RULE_NAME = "Quality and hygiene"
+RULE_DESCRIPTION = (
+    "Metadata and layout problems: a missing or malformed SKILL.md, a bloated "
+    "body, broken file references, no license, and files the scanner could not "
+    "fully read."
+)
+RULE_TAGS = ("hygiene", "AST04")
+RULE_LEVEL = "note"
 
 _LINK = re.compile(r"\]\(([^)]+)\)")           # markdown [text](path)
 _LOCAL_REF = re.compile(r"(?:\./|(?<=\s))([\w./-]+\.(?:py|sh|js|md|json|txt))\b")
@@ -64,7 +72,8 @@ def hygiene_checks(unit: SkillUnit) -> list:
 def _broken_refs(unit: SkillUnit) -> list:
     if unit.skill_md is None:
         return []
-    present = {f.relpath.replace("\\", "/") for f in unit.files}
+    # relpath is already POSIX-normalized by discovery; a link target is not.
+    present = {f.relpath for f in unit.files}
     present |= {f.path.name for f in unit.files}
     text = unit.skill_md.text
     refs = set()

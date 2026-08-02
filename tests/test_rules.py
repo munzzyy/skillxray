@@ -325,6 +325,61 @@ class PermissionsRule(unittest.TestCase):
         self.assertTrue(p and p[0].severity == Severity.HIGH, p)
 
 
+class SupplyChainRule(unittest.TestCase):
+    def test_orphan_pyc_is_high(self):
+        r = scan_files({"SKILL.md": _min_md("body"),
+                        "helper.pyc": b"\x00\x00\x00\x00compiled bytes"})
+        sup = by_cat(r, Category.SUPPLY_CHAIN)
+        self.assertTrue(any(f.severity == Severity.HIGH for f in sup), sup)
+
+    def test_pyc_with_its_source_is_not_flagged(self):
+        r = scan_files({"SKILL.md": _min_md("body"),
+                        "helper.py": "print('hello')\n",
+                        "helper.pyc": b"\x00\x00\x00\x00compiled bytes"})
+        self.assertEqual(by_cat(r, Category.SUPPLY_CHAIN), [])
+
+    def test_encrypted_zip_is_high(self):
+        # Local file header with bit 0 of the general-purpose flag set.
+        blob = b"PK\x03\x04" + b"\x14\x00" + b"\x01\x00" + b"\x00" * 24
+        r = scan_files({"SKILL.md": _min_md("body"), "payload.zip": blob})
+        sup = by_cat(r, Category.SUPPLY_CHAIN)
+        self.assertTrue(any("Password-protected" in f.title for f in sup), sup)
+
+    def test_plain_zip_is_not_flagged(self):
+        blob = b"PK\x03\x04" + b"\x14\x00" + b"\x00\x00" + b"\x00" * 24
+        r = scan_files({"SKILL.md": _min_md("body"), "assets.zip": blob})
+        self.assertEqual(by_cat(r, Category.SUPPLY_CHAIN), [])
+
+    def test_unzip_with_a_password_is_high(self):
+        r = scan_files({"SKILL.md": _min_md("body"),
+                        "setup.sh": "unzip -P hunter2 payload.zip\n"})
+        sup = by_cat(r, Category.SUPPLY_CHAIN)
+        self.assertTrue(any(f.severity == Severity.HIGH for f in sup), sup)
+
+    def test_release_asset_from_another_account_is_high(self):
+        md = ("---\nname: t\ndescription: a skill that fetches its own helper binary.\n"
+              "repository: https://github.com/munzzyy/skillxray\n---\n")
+        r = scan_files({"SKILL.md": md,
+                        "setup.sh": "wget https://github.com/someone-else/tool/releases/download/v1/tool\n"})
+        sup = by_cat(r, Category.SUPPLY_CHAIN)
+        self.assertTrue(any(f.severity == Severity.HIGH for f in sup), sup)
+
+    def test_release_asset_from_the_skills_own_account_is_not_flagged(self):
+        md = ("---\nname: t\ndescription: a skill that fetches its own helper binary.\n"
+              "repository: https://github.com/munzzyy/skillxray\n---\n")
+        r = scan_files({"SKILL.md": md,
+                        "setup.sh": "wget https://github.com/munzzyy/skillxray/releases/download/v1/tool\n"})
+        self.assertEqual(by_cat(r, Category.SUPPLY_CHAIN), [])
+
+    def test_release_asset_with_no_declared_repo_is_medium_not_silent(self):
+        # Nothing to check the account against is a reason to say so, not a
+        # reason to stay quiet.
+        r = scan_files({"SKILL.md": _min_md("body"),
+                        "setup.sh": "wget https://github.com/someone-else/tool/releases/download/v1/tool\n"})
+        sup = by_cat(r, Category.SUPPLY_CHAIN)
+        self.assertTrue(any(f.severity == Severity.MEDIUM for f in sup), sup)
+
+
 class QualityRule(unittest.TestCase):
     def test_missing_description(self):
         r = scan_files({"SKILL.md": "---\nname: t\n---\nbody"})

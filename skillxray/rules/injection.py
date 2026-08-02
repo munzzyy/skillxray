@@ -19,6 +19,14 @@ from ..discovery import SkillUnit
 from ._util import text_targets
 
 RULE_ID = "SX-INJ"
+RULE_NAME = "Prompt injection"
+RULE_DESCRIPTION = (
+    "Instructions aimed at the agent rather than the user: overriding prior "
+    "instructions, revealing the system prompt, acting without consent, or "
+    "hiding an action from the user."
+)
+RULE_TAGS = ("security", "AST05")
+RULE_LEVEL = "error"
 
 _I = re.IGNORECASE
 

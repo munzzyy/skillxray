@@ -36,6 +36,7 @@ class Category(str, enum.Enum):
     EXFILTRATION = "data-exfiltration"
     SECRET = "hardcoded-secret"
     PERMISSION = "permissions"
+    SUPPLY_CHAIN = "supply-chain"
     QUALITY = "quality"
 
     def __str__(self) -> str:  # nicer output in reports
@@ -60,6 +61,7 @@ class Finding:
     column: int = 0  # 1-based
     snippet: str = ""
     remediation: str = ""
+    unit: str = ""  # name of the skill unit the finding came from
 
     def sort_key(self):
         # Worst first, then by location for stable output.

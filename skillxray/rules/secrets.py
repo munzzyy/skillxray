@@ -13,6 +13,13 @@ from ..discovery import SkillUnit
 from ._util import text_targets
 
 RULE_ID = "SX-SEC"
+RULE_NAME = "Hardcoded secrets"
+RULE_DESCRIPTION = (
+    "Credentials committed into the skill: cloud keys, provider API keys, "
+    "tokens, and private key blocks. Matched values are redacted in the report."
+)
+RULE_TAGS = ("security", "AST04")
+RULE_LEVEL = "error"
 
 # (compiled, severity, label)
 _PATTERNS = [
