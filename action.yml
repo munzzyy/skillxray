@@ -25,8 +25,9 @@ inputs:
     default: "high"
   version:
     description: >-
-      skillxray version specifier to install from PyPI (e.g. "==0.2.0"). Empty
-      installs the latest release.
+      Optional PyPI version specifier (e.g. "==0.2.1"). Leave it empty and the
+      action installs the exact code from the ref you pinned in `uses:`, which
+      is the only way to be sure the rules match the tag you asked for.
     required: false
     default: ""
 
@@ -46,9 +47,19 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    # Install from the action's own checkout by default. `uses: ...@v0.2.1`
+    # already resolved to a git ref, and this runs exactly that tree - so the
+    # rules can never lag the ref the user pinned. PyPI is opt-in through the
+    # version input, because a bare `pip install skillxray` silently picks up
+    # whatever the newest published release happens to be.
     - name: Install skillxray
       shell: bash
-      run: python3 -m pip install --quiet "skillxray${INPUTS_VERSION}"
+      run: |
+        if [ -n "$INPUTS_VERSION" ]; then
+          python3 -m pip install --quiet "skillxray${INPUTS_VERSION}"
+        else
+          python3 -m pip install --quiet "$GITHUB_ACTION_PATH"
+        fi
       env:
         INPUTS_VERSION: ${{ inputs.version }}
 

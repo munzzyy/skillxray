@@ -1,7 +1,6 @@
 # skillxray
 
 [![CI](https://github.com/munzzyy/skillxray/actions/workflows/ci.yml/badge.svg)](https://github.com/munzzyy/skillxray/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/skillxray)](https://pypi.org/project/skillxray/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 
@@ -11,7 +10,7 @@ Skills are just instructions and scripts a model will follow, and most people in
 
 ![skillxray scanning a malicious example skill: two criticals (curl piped to bash, credential exfiltration), a hardcoded AWS key, a prompt-injection payload, three zero-width characters, grade F](docs/media/demo.svg)
 
-That skill lives in [`examples/sketchy-pdf-summarizer/`](examples/sketchy-pdf-summarizer/SKILL.md) — every URL and key in it is fake. Run the scan yourself:
+That skill lives in [`examples/sketchy-pdf-summarizer/`](examples/sketchy-pdf-summarizer/SKILL.md). Every URL and key in it is fake. Run the scan yourself:
 
 ```bash
 skillxray examples/sketchy-pdf-summarizer/
@@ -27,17 +26,20 @@ See the [Rules Reference](docs/rules.md) for full details on each rule, its seve
 - Data exfiltration: reads of `~/.ssh`, cloud credentials, `.env`, browser cookies, and whether the same file can send them out, plus known paste, webhook, and tunnel endpoints.
 - Hardcoded secrets: AWS keys, GitHub and GitLab tokens, OpenAI and Anthropic keys, Stripe keys, private key blocks. Matched values are redacted, never echoed back.
 - Permissions: broad `allowed-tools` grants, MCP servers that launch local binaries, Claude Code hooks that run shell automatically on an event.
-- Hygiene: missing name or description, bloated `SKILL.md`, broken file references, no license. Reported separately from the security grade.
+- Supply chain: compiled `.pyc` shipped without its source, release assets pulled from a GitHub account the skill never claims, password-protected archives. Content nobody can read before it runs.
+- Hygiene: missing name or description, bloated `SKILL.md`, broken file references, no license. Reported separately from the security grade, and it never fails the build.
 
 ## Install
 
 One command:
 
 ```bash
-pipx install skillxray
+pipx install git+https://github.com/munzzyy/skillxray
 ```
 
-Pure standard library, Python 3.9+, no runtime dependencies — so a plain clone works too:
+The PyPI package is still catching up: the published release predates the MIT relicense and several rule fixes, so install from git until it lands. Everything below works either way.
+
+Pure standard library, Python 3.9+, no runtime dependencies, so a plain clone works too:
 
 ```bash
 git clone https://github.com/munzzyy/skillxray
@@ -61,28 +63,48 @@ Nothing in a scanned skill is ever executed. `--git` clones shallowly with hooks
 skillxray exits non-zero when it finds something at or above a severity you choose, so it drops straight into a pipeline:
 
 ```yaml
-- run: pipx run skillxray ./skills --fail-on high
+- run: pipx run --spec git+https://github.com/munzzyy/skillxray@v0.2.1 skillxray ./skills --fail-on high
 ```
 
-`--fail-on` takes `critical`, `high`, `medium`, `low`, or `none` (default `high`).
+`--fail-on` takes `critical`, `high`, `medium`, `low`, or `none` (default `high`). It gates on security findings only. A missing LICENSE or a broken link is a hygiene note and never reds a build.
 
-It also speaks SARIF, so findings show up in the GitHub Security tab:
+The exit code is the whole contract:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | nothing at or above the threshold |
+| `1` | at least one security finding at or above the threshold |
+| `2` | skillxray could not run: bad flag, missing path, failed clone |
+
+`2` is deliberately separate from `1`. A misspelled flag means the scan never happened, and a pipeline that reads that as "found something" is drawing the wrong conclusion in both directions.
+
+It also speaks SARIF, so findings show up in the GitHub Security tab, tagged with their OWASP Agentic Skills Top 10 identifier and linked to the [Rules Reference](docs/rules.md):
 
 ```yaml
-- run: pipx run skillxray ./skills --sarif > skillxray.sarif
+- run: pipx run --spec git+https://github.com/munzzyy/skillxray@v0.2.1 skillxray ./skills --sarif > skillxray.sarif
 - uses: github/codeql-action/upload-sarif@v3
   with:
     sarif_file: skillxray.sarif
 ```
 
-Or skip the two steps and use the packaged action, which installs skillxray, scans, and uploads the SARIF in one `uses:` (needs `security-events: write` for the upload):
+Or skip the two steps and use the packaged action, which installs skillxray, scans, and uploads the SARIF in one `uses:` (needs `security-events: write` for the upload). It installs the exact code at the ref you pin, so the rules always match the tag:
 
 ```yaml
-- uses: munzzyy/skillxray@v0.2.0
+- uses: munzzyy/skillxray@v0.2.1
   with:
     path: ./skills
     fail-on: high
 ```
+
+### Excluding paths
+
+Any repo that ships security fixtures, a red-team corpus, or docs that quote `curl | sh` will light up, including this one. `--exclude` takes a glob relative to the path you scanned and is repeatable:
+
+```bash
+skillxray . --exclude 'tests/corpus/*' --exclude 'examples/*'
+```
+
+Globs match on forward slashes on every platform, and a bare directory name excludes everything under it.
 
 ### Pre-commit
 
@@ -91,17 +113,21 @@ You can also run skillxray as a pre-commit hook to block dangerous skills from b
 ```yaml
 repos:
   - repo: https://github.com/munzzyy/skillxray
-    rev: v0.2.0
+    rev: v0.2.1
     hooks:
       - id: skillxray
 ```
 
+pre-commit hands over the changed `SKILL.md` and nothing else, so skillxray scans the whole skill that file belongs to. A payload in a sibling script gets read even when only the markdown changed.
+
 ### Output formats
 
-- default — colored human report
-- `--json` — full findings for scripting
-- `--sarif` — SARIF 2.1.0 for code scanning
-- `--quiet` — just the grade and counts
+- default: colored human report
+- `--json`: full findings for scripting
+- `--sarif`: SARIF 2.1.0 for code scanning
+- `--quiet`: just the grade and counts
+
+Scan a folder of skills and every finding carries the skill it came from, in all three formats.
 
 ## Where it fits
 
@@ -116,7 +142,7 @@ Plenty of scanners are adjacent to this and none of them cover it:
 - It's a static scanner. It reads text and matches patterns; it does not run the skill or trace what a script actually does at runtime. A determined attacker can obfuscate past any static rule, and skillxray flags obfuscation itself (base64-to-shell, hidden Unicode) rather than pretending to defeat it.
 - A clean grade means nothing obvious tripped, not that the skill is safe. Read anything before you trust it with your machine.
 - It expects skill-shaped input (a `SKILL.md`, a plugin, or a folder of them). Point it at an arbitrary code repo and you'll get noisier results, because it will read every text file it finds.
-- It is not a secret scanner for your whole git history — it checks the files in front of it.
+- It is not a secret scanner for your whole git history. It checks the files in front of it.
 
 ## How it works
 
@@ -128,7 +154,7 @@ Found a skill that should have been flagged and wasn't, or a false positive? Ope
 
 ## License
 
-MIT — free to use, change, and ship, commercial or not. See [LICENSE](LICENSE).
+MIT. Free to use, change, and ship, commercial or not. See [LICENSE](LICENSE).
 
 ## Support
 

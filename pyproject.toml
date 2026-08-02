@@ -1,13 +1,18 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "skillxray"
-version = "0.2.0"
+version = "0.2.1"
 description = "Scan an AI agent skill for prompt injection, hidden Unicode, dangerous commands, and leaked secrets before you install it."
 readme = "README.md"
-license = { text = "MIT" }
+# PEP 639: an SPDX expression plus the license file itself. The old
+# `license = { text = ... }` table and the License :: classifier are both
+# deprecated with a removal date, and release.yml builds with whatever
+# setuptools is current on publish day.
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 authors = [{ name = "Cole Munz" }]
 dependencies = []
@@ -15,7 +20,6 @@ keywords = ["agent-skills", "skill", "security", "scanner", "prompt-injection",
             "mcp", "claude", "sast", "supply-chain", "static-analysis"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",

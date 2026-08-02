@@ -47,10 +47,15 @@ Every scan ends in a letter grade, A through F. Any critical finding drops it
 straight to F; high-severity findings cap it below an A. The grade is the
 five-second read; the findings under it are the reason.
 
-The exit code is what to gate on in CI or a script: skillxray exits non-zero
-when any finding lands at or above `--fail-on` (`critical|high|medium|low|info|none`,
-default `high`). So a default run passes on low/medium hygiene notes and fails
-on the things that actually get you owned.
+The exit code is what to gate on in CI or a script. Exit `1` means a security
+finding landed at or above `--fail-on` (`critical|high|medium|low|info|none`,
+default `high`). Exit `2` means skillxray could not run at all: a bad flag, a
+missing path, a failed clone. Hygiene notes never fail the build, so a default
+run fails only on the things that actually get you owned.
+
+If the target legitimately ships attack fixtures or docs quoting `curl | sh`,
+`--exclude GLOB` (repeatable, relative to the scanned path) keeps them out of
+the scan instead of leaving the check permanently red.
 
 A clean grade means skillxray didn't find one of the patterns it checks for,
 not that the skill is safe to run blind. Read what it flagged, and for
