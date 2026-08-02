@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import shutil
 import subprocess
 import tempfile
@@ -14,13 +15,22 @@ from .rules import run_all
 from .rules.quality import hygiene_checks
 
 
-def scan_paths(paths: list[str | Path]) -> ScanResult:
+def scan_paths(paths: list[str | Path], exclude=()) -> ScanResult:
     if not paths:
         return ScanResult(root=".")
 
     units = []
+    seen_roots: set = set()
     for p in paths:
-        units.extend(discover(Path(p)))
+        target = Path(p)
+        for unit in discover(target, rel_base=target, exclude=exclude):
+            # pre-commit can hand us several files from one skill; scanning the
+            # same unit twice would double every finding.
+            key = str(unit.root.resolve())
+            if key in seen_roots:
+                continue
+            seen_roots.add(key)
+            units.append(unit)
 
     result = ScanResult(root=str(paths[0]) if len(paths) == 1 else "[multiple]")
     result.units = len(units)
@@ -28,7 +38,11 @@ def scan_paths(paths: list[str | Path]) -> ScanResult:
     hygiene: dict = {}
     for unit in units:
         scanned += sum(1 for f in unit.files if f.is_text)
-        result.findings.extend(run_all(unit))
+        # Tag every finding with the unit it came from: in a multi-skill scan
+        # the file path alone does not say which skill is the bad one.
+        result.findings.extend(
+            dataclasses.replace(f, unit=unit.name) for f in run_all(unit)
+        )
         # Keep the hygiene summary from the primary (or first) unit.
         for name, ok, detail in hygiene_checks(unit):
             # Worst-case across units: a check fails if it fails in any unit.
@@ -43,11 +57,11 @@ def scan_paths(paths: list[str | Path]) -> ScanResult:
     return result
 
 
-def scan_path(path) -> ScanResult:
-    return scan_paths([path])
+def scan_path(path, exclude=()) -> ScanResult:
+    return scan_paths([path], exclude=exclude)
 
 
-def scan_git(url: str, ref: str | None = None) -> ScanResult:
+def scan_git(url: str, ref: str | None = None, exclude=()) -> ScanResult:
     """Clone a repo shallowly into a temp dir and scan it. Read-only: nothing
     from the cloned repo is executed, and git hooks are disabled during clone."""
     tmp = tempfile.mkdtemp(prefix="skillxray-")
@@ -63,7 +77,7 @@ def scan_git(url: str, ref: str | None = None) -> ScanResult:
     cmd += ["--", url, str(dest)]
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=180)
-        result = scan_path(dest)
+        result = scan_path(dest, exclude=exclude)
         result.root = url
         return result
     except FileNotFoundError:

@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 
 from . import __version__
-from .finding import Severity, ScanResult
+from .finding import Severity, ScanResult, escape_control_chars
+from .rules import RULE_METADATA
 
 _COLOR = {
     Severity.CRITICAL: "\033[1;37;41m",  # white on red
@@ -34,9 +35,15 @@ def render_human(result: ScanResult, color: bool = True) -> str:
 
     if not result.findings:
         lines.append(c("\033[32m", "  No findings. Nothing suspicious surfaced."))
+    # With more than one skill in the scan, a bare `SKILL.md:8` says nothing
+    # about which skill is the bad one, so the unit name rides along.
+    show_unit = result.units > 1
     for f in result.findings:
         tag = c(_COLOR[f.severity], f" {f.severity.label.upper():^8} ")
-        loc = f.file + (f":{f.line}" if f.line else "")
+        # A filename is scanned input too; escape it like any other file text.
+        loc = escape_control_chars(f.file) + (f":{f.line}" if f.line else "")
+        if show_unit and f.unit:
+            loc += f"   in {escape_control_chars(f.unit)}"
         lines.append(f"  {tag} {f.title}  [{f.rule_id} · {f.category}]")
         lines.append(f"           {loc}")
         lines.append(f"           {f.detail}")
@@ -87,6 +94,7 @@ def render_json(result: ScanResult) -> str:
                 "severity": f.severity.label,
                 "title": f.title,
                 "detail": f.detail,
+                "unit": f.unit,
                 "file": f.file,
                 "line": f.line,
                 "column": f.column,
@@ -110,7 +118,20 @@ _SARIF_LEVEL = {
 
 def render_sarif(result: ScanResult) -> str:
     rule_ids = sorted({f.rule_id for f in result.findings})
-    rules = [{"id": rid, "name": rid} for rid in rule_ids]
+    rules = []
+    for rid in rule_ids:
+        meta = RULE_METADATA.get(rid)
+        rule = {"id": rid, "name": rid}
+        if meta:
+            # Without these the Security tab shows a bare `SX-CMD` with no
+            # explanation and nowhere to read the rest.
+            rule["name"] = meta["name"]
+            rule["shortDescription"] = {"text": meta["name"]}
+            rule["fullDescription"] = {"text": meta["description"]}
+            rule["helpUri"] = meta["help_uri"]
+            rule["defaultConfiguration"] = {"level": meta["level"]}
+            rule["properties"] = {"tags": meta["tags"]}
+        rules.append(rule)
     sarif_results = []
     for f in result.findings:
         loc = {
@@ -123,12 +144,18 @@ def render_sarif(result: ScanResult) -> str:
                 "startLine": f.line,
                 "startColumn": max(1, f.column),
             }
+        props = {"security-severity": _sec_severity(f.severity),
+                 "category": f.category.value}
+        meta = RULE_METADATA.get(f.rule_id)
+        if meta:
+            props["tags"] = meta["tags"]
+        if f.unit:
+            props["unit"] = f.unit
         sarif_results.append({
             "ruleId": f.rule_id,
             "level": _SARIF_LEVEL[f.severity],
             "message": {"text": f"{f.title}: {f.detail}"},
-            "properties": {"security-severity": _sec_severity(f.severity),
-                           "category": f.category.value},
+            "properties": props,
             "locations": [loc],
         })
     doc = {
