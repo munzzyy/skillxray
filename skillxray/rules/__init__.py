@@ -44,8 +44,14 @@ RULE_METADATA = {
 }
 
 
-def run_all(unit) -> list:
+def run_all(unit, enabled: "set[str] | None" = None) -> list:
+    """Run every rule against a unit. `enabled`, when given, is the set of
+    rule ids allowed to report - everything else is skipped before it ever
+    touches the unit's files. `None` means every rule runs, which is the
+    default and keeps every existing caller unchanged."""
     findings = []
-    for rule in ALL_RULES:
-        findings.extend(rule(unit))
+    for module in _MODULES:
+        if enabled is not None and module.RULE_ID not in enabled:
+            continue
+        findings.extend(module.check(unit))
     return findings

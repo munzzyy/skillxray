@@ -8,14 +8,14 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .discovery import discover
+from .discovery import discover, MAX_FILE_BYTES
 from .finding import ScanResult
 from .grade import grade
 from .rules import run_all
 from .rules.quality import hygiene_checks
 
 
-def scan_paths(paths: list[str | Path], exclude=()) -> ScanResult:
+def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
     if not paths:
         return ScanResult(root=".")
 
@@ -41,7 +41,7 @@ def scan_paths(paths: list[str | Path], exclude=()) -> ScanResult:
         # Tag every finding with the unit it came from: in a multi-skill scan
         # the file path alone does not say which skill is the bad one.
         result.findings.extend(
-            dataclasses.replace(f, unit=unit.name) for f in run_all(unit)
+            dataclasses.replace(f, unit=unit.name) for f in run_all(unit, enabled=enabled)
         )
         # Keep the hygiene summary from the primary (or first) unit.
         for name, ok, detail in hygiene_checks(unit):
@@ -57,11 +57,20 @@ def scan_paths(paths: list[str | Path], exclude=()) -> ScanResult:
     return result
 
 
-def scan_path(path, exclude=()) -> ScanResult:
-    return scan_paths([path], exclude=exclude)
+def scan_path(path, exclude=(), enabled=None) -> ScanResult:
+    return scan_paths([path], exclude=exclude, enabled=enabled)
 
 
-def scan_git(url: str, ref: str | None = None, exclude=()) -> ScanResult:
+# Cap the pack transfer at a bit above MAX_FILE_BYTES. This keeps the clone
+# itself from ballooning on a repo carrying oversized blobs outside the
+# checked-out tip (other branches, history git would otherwise still touch
+# during negotiation) -- a cheap, no-dependency narrowing of the attack
+# surface alongside the per-file truncation discovery.py already does on
+# whatever does land on disk.
+_CLONE_BLOB_LIMIT = MAX_FILE_BYTES * 2
+
+
+def scan_git(url: str, ref: str | None = None, exclude=(), enabled=None) -> ScanResult:
     """Clone a repo shallowly into a temp dir and scan it. Read-only: nothing
     from the cloned repo is executed, and git hooks are disabled during clone."""
     tmp = tempfile.mkdtemp(prefix="skillxray-")
@@ -69,6 +78,7 @@ def scan_git(url: str, ref: str | None = None, exclude=()) -> ScanResult:
     cmd = [
         "git", "-c", "core.hooksPath=/dev/null",
         "clone", "--depth", "1", "--quiet",
+        f"--filter=blob:limit={_CLONE_BLOB_LIMIT}",
     ]
     if ref:
         cmd += ["--branch", ref]
@@ -77,7 +87,7 @@ def scan_git(url: str, ref: str | None = None, exclude=()) -> ScanResult:
     cmd += ["--", url, str(dest)]
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=180)
-        result = scan_path(dest, exclude=exclude)
+        result = scan_path(dest, exclude=exclude, enabled=enabled)
         result.root = url
         return result
     except FileNotFoundError:
@@ -88,3 +98,28 @@ def scan_git(url: str, ref: str | None = None, exclude=()) -> ScanResult:
         raise RuntimeError(f"git clone failed: {e.stderr.strip() or e}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def scan_git_many(urls: list[str], ref: str | None = None, exclude=(), enabled=None) -> ScanResult:
+    """Scan several repos in one call and merge them into a single result, the
+    same way scan_paths() merges several local units - so one --fail-on
+    threshold can gate a whole list of repos instead of needing one process
+    invocation per URL."""
+    if len(urls) == 1:
+        return scan_git(urls[0], ref, exclude=exclude, enabled=enabled)
+
+    merged = ScanResult(root="[multiple]")
+    hygiene: dict = {}
+    for url in urls:
+        one = scan_git(url, ref, exclude=exclude, enabled=enabled)
+        merged.units += one.units
+        merged.scanned_files += one.scanned_files
+        merged.findings.extend(one.findings)
+        for name, ok, detail in one.hygiene_checks:
+            # Worst-case across repos, same rule scan_paths() uses across units.
+            if name not in hygiene or (hygiene[name][0] and not ok):
+                hygiene[name] = (ok, detail)
+    merged.hygiene_checks = [(n, ok, d) for n, (ok, d) in hygiene.items()]
+    merged.findings.sort(key=lambda f: f.sort_key())
+    merged.grade, merged.grade_score = grade(merged.findings)
+    return merged

@@ -9,7 +9,8 @@ import sys
 from . import __version__
 from .finding import SECURITY_CATEGORIES, Severity
 from .report import render_human, render_json, render_sarif
-from .scanner import scan_paths, scan_git
+from .rules import RULE_METADATA
+from .scanner import scan_paths, scan_git_many
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,9 +20,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("target", nargs="*", default=["."],
                    help="path to a skill dir, a SKILL.md, or a directory of skills (default: .)")
-    p.add_argument("--git", metavar="URL",
-                   help="clone a git repo (shallow, read-only) and scan it instead of a local path")
+    p.add_argument("--git", metavar="URL", nargs="+",
+                   help="clone one or more git repos (shallow, read-only) and scan them "
+                        "instead of a local path; a single --fail-on gates the whole list")
     p.add_argument("--ref", metavar="NAME", help="branch/tag to clone with --git")
+    selection = p.add_mutually_exclusive_group()
+    selection.add_argument("--select", metavar="IDS",
+                            help="comma-separated rule ids to run, e.g. SX-SEC,SX-CMD "
+                                 "(every other rule is switched off)")
+    selection.add_argument("--ignore", metavar="IDS",
+                            help="comma-separated rule ids to switch off, e.g. SX-SEC "
+                                 "(every other rule keeps running)")
     out = p.add_mutually_exclusive_group()
     out.add_argument("--json", action="store_true", help="machine-readable JSON output")
     out.add_argument("--sarif", action="store_true", help="SARIF 2.1.0 (for GitHub code scanning)")
@@ -40,6 +49,28 @@ def build_parser() -> argparse.ArgumentParser:
 
 class UsageError(Exception):
     """A flag the user got wrong. Exit code 2, never 1 - see main()."""
+
+
+def _parse_rule_ids(raw: str) -> set:
+    """Comma-separated rule ids, uppercased, rejecting anything the registry
+    does not know about - a typo in --select/--ignore should fail loudly
+    rather than silently run (or drop) nothing."""
+    ids = {item.strip().upper() for item in raw.split(",") if item.strip()}
+    unknown = ids - set(RULE_METADATA)
+    if unknown:
+        known = ", ".join(sorted(RULE_METADATA))
+        raise UsageError(f"unknown rule id(s) {', '.join(sorted(unknown))}. Known ids: {known}")
+    return ids
+
+
+def _resolve_enabled_rules(args) -> "set[str] | None":
+    """None means every rule runs - the default, unchanged from before this
+    flag existed."""
+    if args.select:
+        return _parse_rule_ids(args.select)
+    if args.ignore:
+        return set(RULE_METADATA) - _parse_rule_ids(args.ignore)
+    return None
 
 
 def _fail_threshold(value: str):
@@ -64,14 +95,20 @@ def main(argv=None) -> int:
         return 2
 
     try:
+        enabled = _resolve_enabled_rules(args)
+    except UsageError as e:
+        print(f"skillxray: {e}", file=sys.stderr)
+        return 2
+
+    try:
         if args.git:
-            result = scan_git(args.git, args.ref, exclude=args.exclude)
+            result = scan_git_many(args.git, args.ref, exclude=args.exclude, enabled=enabled)
         else:
             for target_path in args.target:
                 if not os.path.exists(target_path):
                     print(f"skillxray: no such path: {target_path}", file=sys.stderr)
                     return 2
-            result = scan_paths(args.target, exclude=args.exclude)
+            result = scan_paths(args.target, exclude=args.exclude, enabled=enabled)
     except RuntimeError as e:
         print(f"skillxray: {e}", file=sys.stderr)
         return 2

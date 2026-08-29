@@ -54,9 +54,10 @@ skillxray ./my-skill              # scan a skill directory
 skillxray ./SKILL.md              # scan a single file
 skillxray ./skills-folder         # scan every skill under a folder
 skillxray --git https://github.com/someone/their-skill   # clone (read-only) and scan
+skillxray --git https://github.com/a/skill https://github.com/b/skill   # scan a whole list in one run
 ```
 
-Nothing in a scanned skill is ever executed. `--git` clones shallowly with hooks disabled and only reads files.
+Nothing in a scanned skill is ever executed. `--git` clones shallowly with hooks disabled, caps how much of any single file it will pull down, and only reads files. Pass it more than one URL to scan a whole list of repos under one `--fail-on` threshold instead of running skillxray once per repo.
 
 ### In CI
 
@@ -105,6 +106,15 @@ skillxray . --exclude 'tests/corpus/*' --exclude 'examples/*'
 ```
 
 Globs match on forward slashes on every platform, and a bare directory name excludes everything under it.
+
+### Turning individual rules off
+
+`--ignore SX-SEC,SX-QLT` runs every rule except the ones listed. `--select SX-SEC` runs only the ones listed, switching everything else off. They're mutually exclusive, and an unknown rule id is an error rather than a silent no-op. Rule ids are listed in the [Rules Reference](docs/rules.md).
+
+```bash
+skillxray . --ignore SX-QLT       # keep hygiene notes out of the report entirely
+skillxray . --select SX-SEC       # only run the secrets scanner
+```
 
 ### Pre-commit
 
