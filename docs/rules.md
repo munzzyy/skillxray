@@ -109,8 +109,8 @@ Hardcoded secrets. Severity low to critical depending on the credential.
 OWASP Agentic Skills Top 10: AST04 Insecure Metadata.
 
 Matches known credential shapes: AWS keys, GitHub and GitLab tokens,
-OpenAI/Anthropic/Stripe keys, private key blocks. Matches are redacted in
-the report.
+OpenAI/Anthropic/Stripe keys, Discord and Telegram bot tokens, private key
+blocks. Matches are redacted in the report.
 
 ```bash
 export OPENAI_API_KEY="sk-proj-1234567890abcdef1234567890abcdef"

@@ -293,6 +293,36 @@ class SecretsRule(unittest.TestCase):
         r = scan_files({".env": "PATH=/usr/bin\nRETRIES=3\n"})
         self.assertEqual(by_cat(r, Category.SECRET), [])
 
+    # Built by concatenation, not a single literal, so the fixture does not
+    # itself read as a live credential to a scanner watching this diff -
+    # the point of the test is the regex, not a real leaked token.
+    def _fake_discord_token(self):
+        return "MTA1" + "NjcyOTg3NjU0MzIxMDk4Nw" + "." + "GhIjKl" + "." + "abcdefghijklmnopqrstuvwxyz1234"
+
+    def _fake_telegram_token(self):
+        return "123456789" + ":" + "ABCdefGhIJKlmNoPQRsTUVwxyz1234567AB"
+
+    def test_discord_bot_token(self):
+        r = scan_files({"bot.py": f'TOKEN = "{self._fake_discord_token()}"\n'})
+        s = by_cat(r, Category.SECRET)
+        self.assertTrue(any(f.severity == Severity.HIGH and "Discord" in f.title for f in s), s)
+
+    def test_discord_bot_token_header_form(self):
+        r = scan_files({"bot.py": f'headers = {{"Authorization": "Bot {self._fake_discord_token()}"}}\n'})
+        s = by_cat(r, Category.SECRET)
+        self.assertTrue(any(f.severity == Severity.HIGH and "Discord" in f.title for f in s), s)
+
+    def test_telegram_bot_token(self):
+        r = scan_files({"bot.py": f'TOKEN = "{self._fake_telegram_token()}"\n'})
+        s = by_cat(r, Category.SECRET)
+        self.assertTrue(any(f.severity == Severity.HIGH and "Telegram" in f.title for f in s), s)
+
+    def test_telegram_looking_ratio_not_flagged(self):
+        # A bare small:small number pair should never look like a bot token --
+        # the id portion has to be 8-10 digits and the secret 35 chars.
+        r = scan_files({"x.py": "ratio = 12:34\n"})
+        self.assertEqual([f for f in by_cat(r, Category.SECRET) if "Telegram" in f.title], [])
+
 
 class PermissionsRule(unittest.TestCase):
     def test_autorun_hook_high(self):

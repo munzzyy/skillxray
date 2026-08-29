@@ -35,6 +35,14 @@ _PATTERNS = [
     (re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"), Severity.HIGH, "Google API key"),
     (re.compile(r"\bglpat-[0-9A-Za-z_\-]{20,}\b"), Severity.HIGH, "GitLab personal access token"),
     (re.compile(r"\bhooks\.slack\.com/services/T[A-Za-z0-9/]{20,}"), Severity.MEDIUM, "Slack incoming webhook"),
+    # Discord bot token: base64 bot id, then a fixed-width timestamp segment,
+    # then a 27-char HMAC segment, dot-separated. The `Bot ` header form is
+    # the same token with the prefix skills sometimes paste in whole.
+    (re.compile(r"\b[MN][A-Za-z\d_-]{23,25}\.[A-Za-z\d_-]{6}\.[A-Za-z\d_-]{27,38}\b"),
+     Severity.HIGH, "Discord bot token"),
+    (re.compile(r"\bBot [A-Za-z\d_-]{59,68}\b"), Severity.HIGH, "Discord bot token"),
+    # Telegram bot token: numeric bot id, colon, 35-char secret.
+    (re.compile(r"\b\d{8,10}:[A-Za-z\d_-]{35}\b"), Severity.HIGH, "Telegram bot token"),
 ]
 
 # A key ending in one of these tokens, optionally prefixed by another
