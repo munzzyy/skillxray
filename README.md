@@ -1,7 +1,7 @@
 # skillxray
 
 [![CI](https://github.com/munzzyy/skillxray/actions/workflows/ci.yml/badge.svg)](https://github.com/munzzyy/skillxray/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 
 Scan an AI agent skill before you install it. skillxray reads a `SKILL.md` bundle, a Claude Code plugin, an MCP bundle, or a whole folder of them and tells you what's in there: prompt injection, hidden Unicode, `curl | sh` and reverse shells, credential-stealing patterns, leaked keys, and auto-running hooks. You get a per-finding report and a letter grade, with exit codes for CI.
@@ -37,7 +37,7 @@ One command:
 pipx install git+https://github.com/munzzyy/skillxray
 ```
 
-The PyPI package is still catching up: the published release predates the MIT relicense and several rule fixes, so install from git until it lands. Everything below works either way.
+The PyPI package is still catching up: the published release predates the GPL relicense and several rule fixes, so install from git until it lands. Everything below works either way.
 
 Pure standard library, Python 3.9+, no runtime dependencies, so a plain clone works too:
 
@@ -164,7 +164,7 @@ Found a skill that should have been flagged and wasn't, or a false positive? Ope
 
 ## License
 
-MIT. Free to use, change, and ship, commercial or not. See [LICENSE](LICENSE).
+[GPL-3.0-or-later](LICENSE). You can use, study, change and share it. If you distribute a copy or a modified version, it has to stay under the GPL and come with its source. Releases up to v0.2.1 were under MIT.
 
 ## Support
 

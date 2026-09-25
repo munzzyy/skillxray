@@ -11,7 +11,7 @@ readme = "README.md"
 # `license = { text = ... }` table and the License :: classifier are both
 # deprecated with a removal date, and release.yml builds with whatever
 # setuptools is current on publish day.
-license = "MIT"
+license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 requires-python = ">=3.9"
 authors = [{ name = "Cole Munz" }]
