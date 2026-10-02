@@ -25,7 +25,9 @@ _I = re.IGNORECASE
 
 # Endpoints whose whole purpose is receiving exfiltrated data / out-of-band callbacks.
 # A bare domain must stand alone as a host, so s3-transfer.sh and profile.io don't match.
-_HOST_START = r"(?:(?<=//)|(?<=[.@])|(?<![\w./-]))"
+# An escaped slash (\/, %2F, \x2F, \u002F) only turns up in a serialized URL, so it counts as "//".
+_HOST_START = (r"(?:(?<=//)|(?<=\\/)|(?<=%2f)|(?<=\\x2f)|(?<=\\u002f)|"
+               r"(?<=[.@])|(?<![\w./-]))")
 _BARE_SINKS = (
     r"webhook\.site|requestbin\.\w+|pipedream\.net|"
     r"pastebin\.com|hastebin\.com|termbin\.com|transfer\.sh|0x0\.st|file\.io|"
