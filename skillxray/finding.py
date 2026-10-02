@@ -109,9 +109,7 @@ def line_col(text: str, index: int) -> tuple[int, int]:
 
 
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
-# Characters that render as nothing or reorder the text around them: bidi
-# controls, zero-width and other invisible format characters, the line and
-# paragraph separators, and the tag block.
+# Bidi controls, zero-width and other invisible format characters, U+2028/2029, the tag block.
 _INVISIBLE_RE = re.compile(
     "[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff"
     "\U000e0000-\U000e007f]"

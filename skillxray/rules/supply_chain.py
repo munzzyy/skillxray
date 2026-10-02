@@ -72,8 +72,7 @@ def check(unit: SkillUnit) -> list:
 
 
 def _truncated_files(unit: SkillUnit) -> list:
-    # A payload pushed past the read limit with padding is invisible to every
-    # other rule, so the truncation itself has to be able to fail a gate.
+    # Padding past the read limit hides a payload from every other rule, so this has to gate.
     return [_mk(
         Severity.MEDIUM, t.relpath,
         "File exceeds the scan size limit",
