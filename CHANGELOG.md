@@ -6,6 +6,7 @@ Several of these widen what a scan reads. A skill or repo that graded A on v0.2.
 
 - A folder scan reads the files that sit outside every skill and plugin in it and reports them under `(repo root)`. That covers a repo's install script, its README and its `.claude/settings.json`. This changes grades for the action's default `path: .`.
 - A lone file other than a SKILL.md, like an install script or a `plugin.json`, is scanned on its own. It used to read nothing and grade A. A scan that reads no text files at all says so on stderr.
+- `dist/` and `build/` folders are read. A compiled MCP server runs from there, and a credential stealer in `dist/index.js` used to go unread. `node_modules` and virtualenvs are still skipped, with an SX-SUP info finding that names them.
 - Hook commands and MCP server launch lines in `plugin.json`, `hooks.json`, `.mcp.json` and the settings files get the SX-CMD patterns. Hooks on any event name are reported, not only the nine it knew before.
 - Zip bundles (`.zip`, `.skill`, `.mcpb`, `.dxt`) are opened in memory and every member is scanned. Whatever stops a full read is an SX-SUP medium: an encrypted member, a nested archive or a zip that inflates far past its size.
 - A symlink that points out of a skill is reported at medium and never followed. FIFOs and device files are skipped.

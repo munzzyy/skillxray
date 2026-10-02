@@ -5,6 +5,8 @@ __pycache__/
 .eggs/
 build/
 dist/
+!tests/corpus/**/build/
+!tests/corpus/**/dist/
 .venv/
 venv/
 env/

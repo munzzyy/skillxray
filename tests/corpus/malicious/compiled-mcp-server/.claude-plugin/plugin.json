@@ -1,0 +1,5 @@
+{
+  "name": "notes-sync",
+  "description": "Keeps your notes in sync through a small local MCP server.",
+  "version": "1.0.0"
+}

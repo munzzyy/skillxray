@@ -50,9 +50,11 @@ MANIFEST_NAMES = {
     "plugin.json", ".mcp.json", "mcp.json", "hooks.json", "settings.json",
     "settings.local.json",
 }
-# Directories never worth scanning.
-SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist",
-             "build", ".mypy_cache", ".pytest_cache", ".idea", ".vscode"}
+# Directories never read. dist/ and build/ are not here: a compiled MCP server's entry point lives there.
+SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache",
+             ".pytest_cache", ".idea", ".vscode"}
+# Skipped too, but they hold code that runs, so the unit says it went unread.
+VENDOR_DIRS = {"node_modules", ".venv", "venv"}
 MAX_FILE_BYTES = 2_000_000  # skip anything larger; skills should be small
 ROOT_LABEL = "(repo root)"
 
@@ -113,6 +115,7 @@ class SkillUnit:
     files: list = field(default_factory=list)  # list[ScanTarget]
     frontmatter: dict = field(default_factory=dict)
     label: str = ""
+    skipped: list = field(default_factory=list)  # VENDOR_DIRS left unread, scan-root relative
 
     @property
     def name(self) -> str:
@@ -288,13 +291,24 @@ def _rel_to(path: Path, base: Path) -> str:
         return _norm(str(path))
 
 
-def _iter_files(root: Path, rel_base: Path, exclude=()):
+def _prune(d: Path, dirnames: list, rel_base: Path, exclude, skipped: Optional[list]) -> None:
+    """Drop the subfolders an os.walk should not enter, noting vendored ones."""
+    keep = []
+    for dn in dirnames:
+        rel = _rel_to(d / dn, rel_base)
+        if excluded(rel, exclude):
+            continue
+        if dn in SKIP_DIRS:
+            if dn in VENDOR_DIRS and skipped is not None:
+                skipped.append(escape_control_chars(rel))
+            continue
+        keep.append(dn)
+    dirnames[:] = keep
+
+
+def _iter_files(root: Path, rel_base: Path, exclude=(), skipped: Optional[list] = None):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [
-            d for d in dirnames
-            if d not in SKIP_DIRS
-            and not excluded(_rel_to(Path(dirpath) / d, rel_base), exclude)
-        ]
+        _prune(Path(dirpath), dirnames, rel_base, exclude, skipped)
         for fn in filenames:
             fp = Path(dirpath) / fn
             if excluded(_rel_to(fp, rel_base), exclude):
@@ -507,6 +521,7 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
 
     # A collection: units never nest, so the walk stops at each one and the rest are leftovers.
     leftovers: list = []
+    skipped: list = []
     for dirpath, dirnames, filenames in os.walk(path):
         d = Path(dirpath)
         kind = _unit_kind(d) if d != path else None
@@ -515,11 +530,7 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
                                      budget=budget))
             dirnames[:] = []
             continue
-        dirnames[:] = [
-            dn for dn in dirnames
-            if dn not in SKIP_DIRS
-            and not excluded(_rel_to(d / dn, rel_base), exclude)
-        ]
+        _prune(d, dirnames, rel_base, exclude, skipped)
         for fn in filenames:
             fp = d / fn
             if not excluded(_rel_to(fp, rel_base), exclude):
@@ -528,12 +539,14 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
         # No formal skill markers: scan the directory as a loose unit so the
         # user still gets results instead of silence.
         unit = _build_unit(path, kind="loose", rel_base=rel_base, exclude=exclude, budget=budget)
-        if unit.files:
+        if unit.files or unit.skipped:
             units.append(unit)
-    elif leftovers:
+    elif leftovers or skipped:
         # A repo's installer, README and hooks sit beside its skills, and those run too.
-        units.append(_build_unit(path, kind="root", rel_base=rel_base, exclude=exclude,
-                                 paths=leftovers, label=ROOT_LABEL, budget=budget))
+        unit = _build_unit(path, kind="root", rel_base=rel_base, exclude=exclude,
+                           paths=leftovers, label=ROOT_LABEL, budget=budget)
+        unit.skipped = skipped
+        units.append(unit)
     return units
 
 
@@ -553,7 +566,7 @@ def _build_unit(root: Path, kind: str, rel_base: Optional[Path] = None,
     if budget is None:
         budget = ArchiveBudget()
     if paths is None:
-        paths = _iter_files(root, base, exclude)
+        paths = _iter_files(root, base, exclude, unit.skipped)
     for fp in paths:
         t = _read(fp, base, unit_root=None if follow else root)
         if t is None:

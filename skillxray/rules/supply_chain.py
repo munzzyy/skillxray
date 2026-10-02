@@ -10,6 +10,8 @@ Four shapes a reviewer cannot read and a pattern scanner cannot see through:
     the person reviewing the skill.
   - a symlink out of the skill. Whatever it points at is not part of the
     skill, and on the machine that installs it, it can point at anything.
+  - a vendored dependency folder (node_modules, a virtualenv) that the scan
+    skips. It is reported at info so a clean grade doesn't read as "all of it".
 
 Snyk's survey of public skills names the first three as live patterns, so a
 clean grade from a scanner that never looks at them is a fail-open.
@@ -29,7 +31,8 @@ RULE_NAME = "Opaque or untrusted supply chain"
 RULE_DESCRIPTION = (
     "Content a reviewer cannot read: compiled bytecode shipped without its "
     "source, release assets pulled from an unrelated GitHub account, "
-    "password-protected archives, and symlinks that point out of the skill."
+    "password-protected archives, symlinks that point out of the skill, and "
+    "vendored dependency folders the scan did not read."
 )
 RULE_TAGS = ("security", "supply-chain", "AST01")
 RULE_LEVEL = "error"
@@ -68,7 +71,23 @@ def check(unit: SkillUnit) -> list:
     findings += _escaping_symlinks(unit)
     findings += _archive_notes(unit)
     findings += _truncated_files(unit)
+    findings += _skipped_dirs(unit)
     return findings
+
+
+def _skipped_dirs(unit: SkillUnit) -> list:
+    if not unit.skipped:
+        return []
+    n = len(unit.skipped)
+    shown = ", ".join(unit.skipped[:3]) + (f" and {n - 3} more" if n > 3 else "")
+    return [_mk(
+        Severity.INFO, "",
+        "Vendored dependencies not scanned",
+        f"skillxray does not read installed dependency folders, so nothing under {shown} "
+        "was scanned. A payload can hide in a vendored package as easily as in the "
+        "skill's own code.",
+        "Ship a lockfile instead of installed packages, or review these folders by hand.",
+    )]
 
 
 def _truncated_files(unit: SkillUnit) -> list:

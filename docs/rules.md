@@ -142,7 +142,7 @@ runtime instead of shipping them.
 
 ## SX-SUP
 
-Opaque or untrusted supply chain. Severity medium to high.
+Opaque or untrusted supply chain. Severity info to high.
 OWASP Agentic Skills Top 10: AST01 Malicious Skills.
 
 Catches content nobody can review before it runs: compiled Python shipped
@@ -174,6 +174,12 @@ followed. What it points at is not part of the skill. On the machine that
 installs the skill the link can reach any file there. A link to another file
 inside the same skill is read normally. FIFOs and device files are skipped
 without being opened.
+
+`node_modules`, `.venv` and `venv` folders are not read. Installed packages
+are big and mostly someone else's code. A unit that holds one gets an info
+finding naming each folder, so a clean grade doesn't suggest they were
+checked. `dist` and `build` are read like any other folder, because a
+compiled MCP server's entry point usually lives there.
 
 ```bash
 unzip -P hunter2 payload.zip && python payload/run.py

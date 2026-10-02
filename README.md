@@ -161,7 +161,7 @@ Plenty of scanners are adjacent to this and none of them cover it:
 
 - It's a static scanner. It reads text and matches patterns; it does not run the skill or trace what a script actually does at runtime. A determined attacker can obfuscate past any static rule, and skillxray flags obfuscation itself (base64-to-shell, hidden Unicode) rather than pretending to defeat it.
 - A clean grade means nothing obvious tripped, not that the skill is safe. Read anything before you trust it with your machine.
-- It's built for skill-shaped input (a `SKILL.md`, a plugin, or a folder of them). It reads every text file under the path you give it, except inside `.git`, `node_modules`, virtualenvs, `dist`, `build` and editor or cache folders, so a whole code repo gives noisier results: tests, docs and source that quote an attack get flagged like the real thing.
+- It's built for skill-shaped input (a `SKILL.md`, a plugin, or a folder of them). It reads every text file under the path you give it, `dist` and `build` included, since that's where a compiled MCP server runs from. It skips `.git`, editor and cache folders, `node_modules` and virtualenvs. The last two get an info note saying they went unread. A whole code repo gives noisier results: tests, docs and source that quote an attack get flagged like the real thing.
 - It is not a secret scanner for your whole git history. It checks the files in front of it.
 
 ## How it works
