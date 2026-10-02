@@ -1,22 +1,25 @@
 """Flag dangerous shell/interpreter invocations in bundled scripts and in the
 command examples a skill hands to the agent.
 
-We scan script files in full, plus fenced (``` and ~~~), indented, and inline
-code in Markdown (the model may run those examples). We deliberately do NOT scan
-ordinary prose for the whole pattern set, which would flood the report with false
-positives on docs that merely mention a command. The exception is a short list of
-unmistakable remote-exec / reverse-shell shapes (curl|sh, /dev/tcp, base64|sh),
-which we do flag even in prose: "just run curl | sh" is an instruction to the
-agent no matter where it sits, and those shapes practically never appear
-innocently.
+We scan script files in full, fenced (``` and ~~~), indented, and inline code
+in Markdown (the model may run those examples), and the hook commands and MCP
+launch lines inside JSON manifests, which run without anyone asking. We
+deliberately do NOT scan ordinary prose for the whole pattern set, which would
+flood the report with false positives on docs that merely mention a command.
+The exception is a short list of unmistakable remote-exec / reverse-shell shapes
+(curl|sh, /dev/tcp, base64|sh), which we do flag even in prose: "just run
+curl | sh" is an instruction to the agent no matter where it sits, and those
+shapes practically never appear innocently.
 """
 
 from __future__ import annotations
 
+import json
 import re
 
 from ..finding import Finding, Category, Severity, line_col, snippet_for
 from ..discovery import SkillUnit
+from . import _manifest
 from ._util import code_blocks, indented_blocks
 
 RULE_ID = "SX-CMD"
@@ -188,4 +191,69 @@ def check(unit: SkillUnit) -> list:
                     snippet=snippet_for(t.text, abs_i),
                     remediation=remediation,
                 ))
+    for t in unit.files:
+        if t.kind == "manifest":
+            findings += _manifest_commands(t)
     return findings
+
+
+def _manifest_commands(t) -> list:
+    """Run the full pattern set over each hook command and MCP launch line,
+    and nothing else in the manifest: a description that mentions sudo is
+    not a command."""
+    data = _manifest.load(t)
+    if data is None:
+        return []
+    commands = [[cmd] for _event, cmd in _manifest.hook_commands(data)]
+    commands += [p for p in (_manifest.launch_parts(cfg) for _n, cfg in _manifest.mcp_servers(data)) if p]
+    findings: list = []
+    cursor: dict = {}
+    for parts in commands:
+        joined = " ".join(parts)
+        anchors = [_anchor(t.text, part, cursor) for part in parts]
+        for rx, sev, title, detail, remediation in _PATTERNS:
+            for m in rx.finditer(joined):
+                at = _position(parts, anchors, m.start())
+                line, col = line_col(t.text, at) if at is not None else (0, 0)
+                findings.append(Finding(
+                    rule_id=RULE_ID,
+                    category=Category.DANGEROUS_COMMAND,
+                    severity=sev,
+                    title=title,
+                    detail=detail,
+                    file=t.relpath,
+                    line=line,
+                    column=col,
+                    snippet=snippet_for(joined, m.start()),
+                    remediation=remediation,
+                ))
+    return findings
+
+
+def _anchor(text: str, part: str, cursor: dict):
+    """Where this JSON string starts in the manifest, as (index, ascii_only).
+    The cursor sends a repeated string to its next occurrence. None when the
+    JSON spells the string some other way."""
+    for ascii_only in (True, False):
+        quoted = json.dumps(part, ensure_ascii=ascii_only)
+        start = text.find(quoted, cursor.get(quoted, -1) + 1)
+        if start == -1:
+            start = text.find(quoted)
+        if start != -1:
+            cursor[quoted] = start
+            return start + 1, ascii_only
+    return None
+
+
+def _position(parts: list, anchors: list, offset: int):
+    """Map an offset in the space-joined command back to the manifest text,
+    so the finding carries a line number."""
+    pos = 0
+    for part, anchor in zip(parts, anchors):
+        if offset <= pos + len(part):
+            if anchor is None:
+                return None
+            start, ascii_only = anchor
+            return start + len(json.dumps(part[:offset - pos], ensure_ascii=ascii_only)) - 2
+        pos += len(part) + 1
+    return None

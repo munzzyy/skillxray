@@ -6,10 +6,9 @@ so a reviewer should always see them.
 
 from __future__ import annotations
 
-import json
-
 from ..finding import Finding, Category, Severity, escape_control_chars
 from ..discovery import SkillUnit
+from . import _manifest
 
 RULE_ID = "SX-PRM"
 RULE_NAME = "Permissions and capability"
@@ -19,13 +18,6 @@ RULE_DESCRIPTION = (
 )
 RULE_TAGS = ("security", "AST03")
 RULE_LEVEL = "warning"
-
-# Claude Code hook events - a command under any of these runs shell automatically
-# when the event fires, without the model choosing to.
-_HOOK_EVENTS = {
-    "PreToolUse", "PostToolUse", "UserPromptSubmit", "Notification",
-    "Stop", "SubagentStop", "SessionStart", "SessionEnd", "PreCompact",
-}
 
 
 def check(unit: SkillUnit) -> list:
@@ -72,9 +64,8 @@ def _allowed_tools(unit: SkillUnit) -> list:
 
 
 def _json_manifest(unit: SkillUnit, t) -> list:
-    try:
-        data = json.loads(t.text)
-    except (ValueError, TypeError):
+    data = _manifest.load(t)
+    if data is None:
         return [_mk(RULE_ID, Category.PERMISSION, Severity.LOW, t.relpath,
                     "Manifest is not valid JSON",
                     "This manifest could not be parsed, so its declared permissions could not be reviewed.",
@@ -87,59 +78,29 @@ def _json_manifest(unit: SkillUnit, t) -> list:
 
 def _scan_hooks(rel: str, data) -> list:
     findings = []
-    hooks = data.get("hooks") if isinstance(data, dict) else None
-    if not isinstance(hooks, dict):
-        return findings
-    for event, entries in hooks.items():
-        if event not in _HOOK_EVENTS:
-            continue
-        commands = _collect_hook_commands(entries)
-        for cmd in commands:
-            findings.append(_mk(RULE_ID, Category.PERMISSION, Severity.HIGH, rel,
-                f"Auto-running hook on {event}",
-                f"A {event} hook runs `{_trim(cmd)}` automatically when the event fires - shell execution with the model out of the loop. Review it as carefully as any executable.",
-                "Confirm the hook command is safe and expected; auto-run hooks are a direct code-execution path."))
+    for event, cmd in _manifest.hook_commands(data):
+        event = _trim(event, 40)  # an untrusted key that lands in the title
+        findings.append(_mk(RULE_ID, Category.PERMISSION, Severity.HIGH, rel,
+            f"Auto-running hook on {event}",
+            f"A {event} hook runs `{_trim(cmd)}` automatically when the event fires - shell execution with the model out of the loop. Review it as carefully as any executable.",
+            "Confirm the hook command is safe and expected; auto-run hooks are a direct code-execution path."))
     return findings
-
-
-def _collect_hook_commands(entries) -> list:
-    out = []
-    if isinstance(entries, list):
-        for e in entries:
-            if isinstance(e, dict):
-                inner = e.get("hooks")
-                if isinstance(inner, list):
-                    for h in inner:
-                        if isinstance(h, dict) and h.get("command"):
-                            out.append(str(h["command"]))
-                elif e.get("command"):
-                    out.append(str(e["command"]))
-    return out
 
 
 def _scan_mcp(rel: str, data) -> list:
     findings = []
-    servers = None
-    if isinstance(data, dict):
-        servers = data.get("mcpServers") or data.get("mcp_servers")
-    if not isinstance(servers, dict):
-        return findings
-    for sname, cfg in servers.items():
-        if not isinstance(cfg, dict):
-            continue
+    for sname, cfg in _manifest.mcp_servers(data):
         # The server name is a JSON key and the url is a JSON value, both read
         # straight out of an untrusted manifest. They get the same control-byte
         # escaping as any other scanned text, or a crafted plugin.json can paint
         # a forged verdict into the report with terminal escape sequences.
         safe_name = _trim(sname)
-        cmd = cfg.get("command")
-        if cmd:
-            args = cfg.get("args") or []
-            full = " ".join([str(cmd)] + [str(a) for a in args]) if isinstance(args, list) else str(cmd)
-            sev = Severity.MEDIUM if str(cmd) in ("npx", "uvx", "bunx", "pnpm", "yarn") else Severity.HIGH
+        parts = _manifest.launch_parts(cfg)
+        if parts:
+            sev = Severity.MEDIUM if parts[0] in ("npx", "uvx", "bunx", "pnpm", "yarn") else Severity.HIGH
             findings.append(_mk(RULE_ID, Category.PERMISSION, sev, rel,
                 f"MCP server '{safe_name}' launches a local process",
-                f"Starts `{_trim(full)}`. Whatever that command resolves to runs on the machine with the skill's trust.",
+                f"Starts `{_trim(' '.join(parts))}`. Whatever that command resolves to runs on the machine with the skill's trust.",
                 "Confirm the command and any fetched package are trusted and pinned."))
         elif cfg.get("url"):
             findings.append(_mk(RULE_ID, Category.PERMISSION, Severity.INFO, rel,

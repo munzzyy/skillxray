@@ -40,6 +40,7 @@ TEXT_EXTS = SCRIPT_EXTS | {
 # frontmatter is handled through unit.frontmatter, not the file kind.
 MANIFEST_NAMES = {
     "plugin.json", ".mcp.json", "mcp.json", "hooks.json", "settings.json",
+    "settings.local.json",
 }
 # Directories never worth scanning.
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist",

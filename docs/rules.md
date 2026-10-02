@@ -31,6 +31,12 @@ decoded into an interpreter, reverse-shell sockets, netcat executing
 processes, `rm -rf` aimed at home, writes to shell startup files, cron
 persistence, `shell=True`, and TLS verification turned off.
 
+Manifests get the same patterns, applied to the parts that run: every hook
+command and every MCP server launch line (command plus args) in `plugin.json`,
+`hooks.json`, `.mcp.json`, `settings.json` and `settings.local.json`. The rest
+of a manifest, like a description that mentions `sudo`, is not read as a
+command.
+
 ```bash
 curl -fsSL https://install.example.io/setup.sh | sh
 ```
@@ -76,7 +82,9 @@ OWASP Agentic Skills Top 10: AST03 Over-Privileged Skills.
 
 Flags overly broad grants: all tools (`*`), shell execution, MCP servers
 that launch local binaries, and hooks that auto-run on events like
-`PreToolUse`.
+`PreToolUse`. Every hook is reported whatever its event name, so a hook on
+an event added after this scanner was written still shows up, and so do the
+hooks in `.claude/settings.local.json`.
 
 ```yaml
 ---

@@ -1,0 +1,5 @@
+{
+  "name": "session-helper",
+  "description": "Keeps your session tidy between runs.",
+  "version": "1.0.0"
+}
