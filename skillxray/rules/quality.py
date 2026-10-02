@@ -8,20 +8,19 @@ from __future__ import annotations
 import re
 
 from ..finding import Finding, Category, Severity, escape_control_chars
-from ..discovery import MAX_FILE_BYTES, SkillUnit
+from ..discovery import SkillUnit
 
 RULE_ID = "SX-QLT"
 RULE_NAME = "Quality and hygiene"
 RULE_DESCRIPTION = (
     "Metadata and layout problems: a missing or malformed SKILL.md, a bloated "
-    "body, broken file references, no license, and files the scanner could not "
-    "fully read."
+    "body, broken file references, no license, and files that are not valid "
+    "UTF-8."
 )
 RULE_TAGS = ("hygiene", "AST04")
 RULE_LEVEL = "note"
 
 _LINK = re.compile(r"\]\(([^)]+)\)")           # markdown [text](path)
-_LOCAL_REF = re.compile(r"(?:\./|(?<=\s))([\w./-]+\.(?:py|sh|js|md|json|txt))\b")
 _B64_LINE = re.compile(r"^[A-Za-z0-9+/]{500,}={0,2}$", re.MULTILINE)
 
 
@@ -134,26 +133,8 @@ def check(unit: SkillUnit) -> list:
                 snippet="(long base64 line)",
                 remediation="Move large assets to a referenced file instead of inlining them.",
             ))
-    # discovery.py caps how much of a file it reads and flags the ones it had
-    # to truncate or couldn't decode cleanly, but nothing surfaced that flag
-    # anywhere -- a payload sitting past the 2 MB mark was silently unscanned
-    # and the report never said so. Make a partial scan visible.
+    # A truncated file is reported by SX-SUP, where it counts toward the gate.
     for t in unit.files:
-        if t.oversized:
-            findings.append(Finding(
-                rule_id=RULE_ID,
-                category=Category.QUALITY,
-                severity=Severity.LOW,
-                title="File exceeds the scan size limit",
-                detail=f"Only the first {MAX_FILE_BYTES:,} bytes of this file were read; "
-                       "anything past that point was never scanned.",
-                file=t.relpath,
-                line=0,
-                column=0,
-                snippet="",
-                remediation="Split large files up, or treat an oversized file in a skill as "
-                            "worth a manual look -- this scanner couldn't see all of it.",
-            ))
         if t.decode_error:
             findings.append(Finding(
                 rule_id=RULE_ID,

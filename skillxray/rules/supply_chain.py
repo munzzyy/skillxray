@@ -20,7 +20,8 @@ from __future__ import annotations
 import re
 
 from ..finding import Finding, Category, Severity, escape_control_chars
-from ..discovery import MAX_ARCHIVE_BYTES, MAX_ARCHIVE_MEMBERS, MAX_ARCHIVE_TOTAL, SkillUnit
+from ..discovery import (MAX_ARCHIVE_BYTES, MAX_ARCHIVE_MEMBERS, MAX_ARCHIVE_TOTAL,
+                         MAX_FILE_BYTES, SkillUnit)
 from ._util import text_targets
 
 RULE_ID = "SX-SUP"
@@ -66,7 +67,21 @@ def check(unit: SkillUnit) -> list:
     findings += _foreign_release_downloads(unit)
     findings += _escaping_symlinks(unit)
     findings += _archive_notes(unit)
+    findings += _truncated_files(unit)
     return findings
+
+
+def _truncated_files(unit: SkillUnit) -> list:
+    # A payload pushed past the read limit with padding is invisible to every
+    # other rule, so the truncation itself has to be able to fail a gate.
+    return [_mk(
+        Severity.MEDIUM, t.relpath,
+        "File exceeds the scan size limit",
+        f"Only the first {MAX_FILE_BYTES:,} bytes of this file were read; anything "
+        "past that point was never scanned. Padding a file past the limit is a way "
+        "to hide a payload from a scanner.",
+        "Split large files up, or review the rest of this one by hand before trusting it.",
+    ) for t in unit.files if t.oversized]
 
 
 # note code -> (severity, title, what happened, fix)

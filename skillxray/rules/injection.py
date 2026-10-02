@@ -3,7 +3,10 @@
 A skill is natural-language instructions the model will follow. That makes the
 prose itself an attack surface: text that tells the agent to ignore its rules,
 hide actions from the user, or override the system prompt is the skill equivalent
-of a code backdoor. We scan Markdown prose and the frontmatter description.
+of a code backdoor. We scan Markdown prose, manifests, and data files like a
+prompts.yaml at full severity. Scripts are read too, one severity lower: a
+string a script prints can reach the agent, but scripts also embed prompt
+text for honest reasons, and that alone should not fail a --fail-on high gate.
 
 Patterns are written to need an explicit object ("instructions", "rules",
 "the user") so ordinary phrases like "ignore case" or "act as a linter" don't
@@ -98,13 +101,18 @@ _PATTERNS = [
 ]
 
 
+_ONE_LOWER = {Severity.HIGH: Severity.MEDIUM, Severity.MEDIUM: Severity.LOW}
+
+
 def check(unit: SkillUnit) -> list:
     findings: list = []
-    for t in text_targets(unit, kinds=("markdown", "manifest")):
+    for t in text_targets(unit, kinds=("markdown", "manifest", "data", "script")):
         # For manifests we only care about a description field, not JSON keys;
         # scanning the whole text is fine - patterns are specific enough.
         text = t.text
         for rx, sev, title, detail in _PATTERNS:
+            if t.kind == "script":
+                sev = _ONE_LOWER.get(sev, sev)
             for m in rx.finditer(text):
                 line, col = line_col(text, m.start())
                 findings.append(Finding(
