@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-10-02)
 
 Several of these widen what a scan reads. A skill or repo that graded A on v0.2.1 can grade lower now, so check your `--fail-on` gate after you upgrade. Did a grade move in a way that looks wrong? Please open an [issue](https://github.com/munzzyy/skillxray/issues).
 

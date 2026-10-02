@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skillxray"
-version = "0.2.1"
+version = "0.3.0"
 description = "Scan an AI agent skill for prompt injection, hidden Unicode, dangerous commands, and leaked secrets before you install it."
 readme = "README.md"
 # PEP 639: an SPDX expression plus the license file itself. The old

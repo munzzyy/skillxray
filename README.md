@@ -68,7 +68,7 @@ Nothing in a scanned skill is ever executed. `--git` clones shallowly with hooks
 skillxray exits non-zero when it finds something at or above a severity you choose, so it drops straight into a pipeline:
 
 ```yaml
-- run: pipx run --spec git+https://github.com/munzzyy/skillxray@v0.2.1 skillxray ./skills --fail-on high
+- run: pipx run --spec git+https://github.com/munzzyy/skillxray@v0.3.0 skillxray ./skills --fail-on high
 ```
 
 `--fail-on` takes `critical`, `high`, `medium`, `low`, `info`, or `none` (default `high`). It gates on security findings only. A missing LICENSE or a broken link is a hygiene note and never reds a build.
@@ -86,7 +86,7 @@ The exit code is the whole contract:
 It also speaks SARIF, so findings show up in the GitHub Security tab, tagged with their OWASP Agentic Skills Top 10 identifier and linked to the [Rules Reference](docs/rules.md):
 
 ```yaml
-- run: pipx run --spec git+https://github.com/munzzyy/skillxray@v0.2.1 skillxray ./skills --sarif > skillxray.sarif
+- run: pipx run --spec git+https://github.com/munzzyy/skillxray@v0.3.0 skillxray ./skills --sarif > skillxray.sarif
 - uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: skillxray.sarif
@@ -97,7 +97,7 @@ Locations in the SARIF are relative to the directory you run skillxray from, so 
 Or skip the two steps and use the packaged action, which installs skillxray, scans, and uploads the SARIF in one `uses:` (needs `security-events: write` for the upload). It installs the exact code at the ref you pin, so the rules always match the tag:
 
 ```yaml
-- uses: munzzyy/skillxray@v0.2.1
+- uses: munzzyy/skillxray@v0.3.0
   with:
     path: ./skills
     fail-on: high
@@ -133,7 +133,7 @@ You can also run skillxray as a pre-commit hook to block dangerous skills from b
 ```yaml
 repos:
   - repo: https://github.com/munzzyy/skillxray
-    rev: v0.2.1
+    rev: v0.3.0
     hooks:
       - id: skillxray
 ```
@@ -172,7 +172,6 @@ Every check is a deterministic rule over the skill's text. No model calls, no ne
 
 These four need a person, not more code: a release, a package index account, and a couple of calls on how strict the scanner should be.
 
-- The next release. Everything on main since v0.2.1 is unreleased, and the [CHANGELOG](CHANGELOG.md) lists it under Unreleased. The `@v0.2.1` pins above don't have any of it. Pin a commit from main if you need it before the tag.
 - A current PyPI package. PyPI still serves 0.1.0, which is why [Install](#install) points at git. The release workflow can publish, but the trusted publisher on pypi.org isn't set up yet.
 - Whether a whole-repo scan should read `.github/workflows`. Today it does, like any other file outside a skill, so a workflow that pipes an installer into a shell grades the repo F. `--exclude .github` turns that off until this is settled.
 - The severities of the newer findings. A text file cut off at the 2 MB read limit, a symlink out of a skill and an archive that could not be fully read are all medium for now, which fails a `--fail-on medium` gate. So is an archive that unpacks to more than 20 times its size, and that cutoff is a guess too. A big image or other binary gets no size finding, since no rule reads it as text, and neither does a bundle that opened and was read whole. Expect these to move if they turn out noisy on real skills.

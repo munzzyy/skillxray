@@ -25,7 +25,7 @@ inputs:
     default: "high"
   version:
     description: >-
-      Optional PyPI version specifier (e.g. "==0.2.1"). Leave it empty and the
+      Optional PyPI version specifier (e.g. "==0.3.0"). Leave it empty and the
       action installs the exact code from the ref you pinned in `uses:`, which
       is the only way to be sure the rules match the tag you asked for.
     required: false
@@ -55,7 +55,7 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
-    # Install from the action's own checkout by default. `uses: ...@v0.2.1`
+    # Install from the action's own checkout by default. `uses: ...@v0.3.0`
     # already resolved to a git ref, and this runs exactly that tree - so the
     # rules can never lag the ref the user pinned. PyPI is opt-in through the
     # version input, because a bare `pip install skillxray` silently picks up
