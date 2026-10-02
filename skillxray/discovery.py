@@ -4,6 +4,7 @@ A "skill unit" is one of:
   - a directory containing a SKILL.md (an Agent Skill),
   - a directory containing .claude-plugin/plugin.json (a Claude Code plugin),
   - a lone SKILL.md pointed at directly,
+  - a lone zip bundle (.zip, .skill, .mcpb, .dxt) pointed at directly,
   - the files of a scanned folder that sit outside every skill and plugin in
     it (a repo's installer, README and settings), labeled ROOT_LABEL.
 
@@ -19,9 +20,12 @@ import fnmatch
 import os
 import re
 import stat
+import zipfile
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional
+
+from .finding import escape_control_chars
 
 # Anything that can carry executable logic. Windows batch and PowerShell modules
 # belong here as much as .sh does: a payload in setup.bat is still a payload, and
@@ -48,6 +52,14 @@ SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist",
              "build", ".mypy_cache", ".pytest_cache", ".idea", ".vscode"}
 MAX_FILE_BYTES = 2_000_000  # skip anything larger; skills should be small
 ROOT_LABEL = "(repo root)"
+
+# Zip containers skills and MCP bundles ship in. Members are read in memory,
+# never written to disk, and an archive inside one is reported, not opened.
+ARCHIVE_EXTS = {".zip", ".skill", ".mcpb", ".dxt"}
+MAX_ARCHIVE_BYTES = 50_000_000
+MAX_ARCHIVE_MEMBERS = 2_000
+MAX_ARCHIVE_TOTAL = 50_000_000  # uncompressed bytes read from one archive
+_ZIP_MAGIC = b"PK\x03\x04"
 
 # A shebang line naming a real interpreter. Extension lists always have holes,
 # so the file's own first line gets the final say: an extensionless `install`
@@ -82,6 +94,8 @@ class ScanTarget:
     decode_error: bool = False
     oversized: bool = False  # bigger than MAX_FILE_BYTES; only the prefix was read
     link: str = ""  # kind == "symlink": where it points, never followed
+    archive: bool = False  # opened as a zip; its members follow it in unit.files
+    notes: list = field(default_factory=list)  # [(code, detail)] from reading the archive
 
     @property
     def is_text(self) -> bool:
@@ -143,9 +157,13 @@ def _read(path: Path, root: Path, unit_root: Optional[Path] = None) -> Optional[
             raw = fh.read(MAX_FILE_BYTES)
     except OSError:
         return None
-    kind = classify(path)
-    target = ScanTarget(path=path, relpath=rel, kind=kind, raw=raw, oversized=oversized)
-    if kind == "binary":
+    return _decode(ScanTarget(path=path, relpath=rel, kind=classify(path), raw=raw,
+                              oversized=oversized))
+
+
+def _decode(target: ScanTarget) -> ScanTarget:
+    raw = target.raw
+    if target.kind == "binary":
         # Salvage files with an unknown extension that are really UTF-8 text
         # (e.g. .pem keys, extensionless configs) so their contents get scanned.
         if b"\x00" not in raw:
@@ -165,6 +183,61 @@ def _read(path: Path, root: Path, unit_root: Optional[Path] = None) -> Optional[
     if target.kind == "data" and _SHEBANG.match(target.text):
         target.kind = "script"
     return target
+
+
+def _archive_members(t: ScanTarget) -> list:
+    """The archive's members as ScanTargets named `archive!member`. Whatever
+    stops a full read becomes a note on the archive for SX-SUP to report."""
+    try:
+        size = t.path.stat().st_size
+    except OSError:
+        return []
+    if size > MAX_ARCHIVE_BYTES:
+        t.notes.append(("too-large", f"{size:,} bytes"))
+        return []
+    try:
+        zf = zipfile.ZipFile(t.path)
+    except Exception:  # hostile input: a parse failure is a finding, never a traceback
+        t.notes.append(("unreadable", ""))
+        return []
+    members: list = []
+    total = 0
+    with zf:
+        t.archive = True
+        infos = [i for i in zf.infolist() if not i.is_dir()]
+        if len(infos) > MAX_ARCHIVE_MEMBERS:
+            t.notes.append(("too-many", f"{len(infos):,} entries"))
+            infos = infos[:MAX_ARCHIVE_MEMBERS]
+        for info in infos:
+            name = escape_control_chars(info.filename)
+            if info.flag_bits & 0x1:
+                t.notes.append(("encrypted", name))
+                continue
+            if PurePosixPath(info.filename).suffix.lower() in ARCHIVE_EXTS:
+                t.notes.append(("nested", name))
+                continue
+            budget = min(MAX_FILE_BYTES, MAX_ARCHIVE_TOTAL - total)
+            if budget <= 0:
+                t.notes.append(("too-much", name))
+                break
+            try:
+                with zf.open(info) as fh:
+                    raw = fh.read(budget)
+            except Exception:  # bad CRC, unsupported compression, truncated data
+                t.notes.append(("bad-member", name))
+                continue
+            total += len(raw)
+            if raw.startswith(_ZIP_MAGIC):
+                t.notes.append(("nested", name))
+                continue
+            members.append(_decode(ScanTarget(
+                path=PurePosixPath(info.filename), relpath=f"{t.relpath}!{name}",
+                kind=classify(PurePosixPath(info.filename)), raw=raw,
+                oversized=info.file_size > MAX_FILE_BYTES)))
+            if len(raw) < min(info.file_size, MAX_FILE_BYTES):
+                t.notes.append(("too-much", name))
+                break
+    return members
 
 
 def _norm(rel: str) -> str:
@@ -297,6 +370,12 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=()) -> list:
     if rel_base is None:
         rel_base = path if path.is_dir() else path.parent
 
+    if path.is_file() and path.suffix.lower() in ARCHIVE_EXTS:
+        base = path.parent if rel_base == path else rel_base
+        units.append(_build_unit(path.parent, kind="loose", rel_base=base,
+                                 exclude=exclude, paths=[path]))
+        return units
+
     if path.is_file() and path.name.lower() == "skill.md":
         # Scan the whole skill, not just the markdown. Pre-commit hands us the
         # SKILL.md path and nothing else, and most payloads live in a sibling
@@ -371,6 +450,8 @@ def _build_unit(root: Path, kind: str, rel_base: Optional[Path] = None,
         if t is None:
             continue
         unit.files.append(t)
+        if t.kind != "symlink" and fp.suffix.lower() in ARCHIVE_EXTS:
+            unit.files.extend(_archive_members(t))
         if (kind != "root" and t.is_text and fp.name.lower() == "skill.md"
                 and unit.skill_md is None):
             unit.skill_md = t

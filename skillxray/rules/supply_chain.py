@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 
 from ..finding import Finding, Category, Severity, escape_control_chars
-from ..discovery import SkillUnit
+from ..discovery import MAX_ARCHIVE_BYTES, MAX_ARCHIVE_MEMBERS, MAX_ARCHIVE_TOTAL, SkillUnit
 from ._util import text_targets
 
 RULE_ID = "SX-SUP"
@@ -65,6 +65,57 @@ def check(unit: SkillUnit) -> list:
     findings += _encrypted_archives(unit)
     findings += _foreign_release_downloads(unit)
     findings += _escaping_symlinks(unit)
+    findings += _archive_notes(unit)
+    return findings
+
+
+# note code -> (severity, title, what happened, fix)
+_ARCHIVE_NOTES = {
+    "encrypted": (Severity.HIGH, "Password-protected archive",
+                  "These members are encrypted, so their contents cannot be scanned or "
+                  "reviewed. An encrypted payload inside a skill has no honest use",
+                  "Ship the files unencrypted so they can be read before they are trusted."),
+    "too-large": (Severity.MEDIUM, "Archive too large to scan",
+                  f"The archive is over the {MAX_ARCHIVE_BYTES:,}-byte limit, so it was "
+                  "not opened and nothing inside it was scanned",
+                  "Ship the files unpacked, or review the archive by hand."),
+    "unreadable": (Severity.MEDIUM, "Archive could not be read",
+                   "This is named like a zip bundle but is not a readable zip: it is "
+                   "truncated, corrupt, or something else. Nothing inside it was scanned",
+                   "Rebuild the bundle, or review it by hand before trusting it."),
+    "too-many": (Severity.MEDIUM, "Archive only partly scanned",
+                 f"Only the first {MAX_ARCHIVE_MEMBERS:,} entries were read; the rest "
+                 "were never scanned",
+                 "Review the remaining entries by hand, or ship the files unpacked."),
+    "too-much": (Severity.MEDIUM, "Archive only partly scanned",
+                 f"Reading stopped at {MAX_ARCHIVE_TOTAL:,} uncompressed bytes, so this "
+                 "member and everything after it were not fully scanned",
+                 "Review the rest by hand, or ship the files unpacked."),
+    "nested": (Severity.MEDIUM, "Nested archive not scanned",
+               "An archive inside an archive is not opened, so these were not scanned",
+               "Ship nested bundles unpacked so they can be read."),
+    "bad-member": (Severity.MEDIUM, "Archive member could not be read",
+                   "These members failed to decompress (bad checksum, unsupported "
+                   "compression, or truncated data), so they were not scanned",
+                   "Rebuild the archive, or review those members by hand."),
+}
+
+
+def _archive_notes(unit: SkillUnit) -> list:
+    findings = []
+    for t in unit.files:
+        by_code: dict = {}
+        for code, detail in t.notes:
+            by_code.setdefault(code, []).append(detail)
+        for code, details in by_code.items():
+            sev, title, what, fix = _ARCHIVE_NOTES[code]
+            named = [d for d in details if d]
+            if named:
+                shown = ", ".join(named[:3]) + (f" and {len(named) - 3} more" if len(named) > 3 else "")
+                what = f"{what}: {shown}."
+            else:
+                what += "."
+            findings.append(_mk(sev, t.relpath, title, what, fix))
     return findings
 
 
@@ -115,7 +166,8 @@ def _orphan_bytecode(unit: SkillUnit) -> list:
 def _encrypted_archives(unit: SkillUnit) -> list:
     findings = []
     for t in unit.files:
-        if _is_encrypted_zip(t.raw):
+        # An opened archive reports its encrypted members through its notes.
+        if not t.archive and _is_encrypted_zip(t.raw):
             findings.append(_mk(
                 Severity.HIGH, t.relpath,
                 "Password-protected archive",

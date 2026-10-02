@@ -4,7 +4,7 @@
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 
-Scan an AI agent skill before you install it. skillxray reads a `SKILL.md` bundle, a Claude Code plugin, an MCP bundle, or a whole folder of them and tells you what's in there: prompt injection, hidden Unicode, `curl | sh` and reverse shells, credential-stealing patterns, leaked keys, and auto-running hooks. You get a per-finding report and a letter grade, with exit codes for CI.
+Scan an AI agent skill before you install it. skillxray reads a `SKILL.md` bundle, a Claude Code plugin, a zipped skill or MCP bundle (`.zip`, `.skill`, `.mcpb`, `.dxt`), or a whole folder of them and tells you what's in there: prompt injection, hidden Unicode, `curl | sh` and reverse shells, credential-stealing patterns, leaked keys, and auto-running hooks. You get a per-finding report and a letter grade, with exit codes for CI.
 
 Skills are just instructions and scripts a model will follow, and most people install them the way they'd `npm install` anything: without reading a line. Recent audits of public skills found prompt injection in a large share of them. This is the tool that reads the skill so you don't have to trust it blind.
 
@@ -52,6 +52,7 @@ python -m skillxray ./some-skill      # run it directly, no install
 ```bash
 skillxray ./my-skill              # scan a skill directory
 skillxray ./SKILL.md              # scan a single file
+skillxray ./server.mcpb           # scan a zipped bundle without unpacking it
 skillxray ./skills-folder         # scan every skill under a folder
 skillxray --git https://github.com/someone/their-skill   # clone (read-only) and scan
 skillxray --git https://github.com/a/skill https://github.com/b/skill   # scan a whole list in one run

@@ -1,9 +1,11 @@
 """Per-rule unit tests. Inputs are built here (not committed) so the tricky ones
 - invisible Unicode especially - are exact and self-contained."""
 
+import io
 import json
 import time
 import unittest
+import zipfile
 from pathlib import Path
 
 from skillxray.finding import Category, Severity
@@ -501,8 +503,10 @@ class SupplyChainRule(unittest.TestCase):
         self.assertTrue(any("Password-protected" in f.title for f in sup), sup)
 
     def test_plain_zip_is_not_flagged(self):
-        blob = b"PK\x03\x04" + b"\x14\x00" + b"\x00\x00" + b"\x00" * 24
-        r = scan_files({"SKILL.md": _min_md("body"), "assets.zip": blob})
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("icons/logo.txt", "a plain asset\n")
+        r = scan_files({"SKILL.md": _min_md("body"), "assets.zip": buf.getvalue()})
         self.assertEqual(by_cat(r, Category.SUPPLY_CHAIN), [])
 
     def test_unzip_with_a_password_is_high(self):

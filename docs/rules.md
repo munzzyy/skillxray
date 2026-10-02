@@ -139,6 +139,15 @@ without its `.py` source, GitHub release assets pulled from an account the
 skill never claims as its own, and password-protected archives (both the
 encrypted zip itself and the `unzip -P` / `7z -p` that opens one).
 
+Zip bundles (`.zip`, `.skill`, `.mcpb`, `.dxt`) are opened in memory and
+every member is scanned like a file on disk, reported as
+`bundle.zip!path/inside`. Nothing is written out. Whatever stops a full read
+is a finding of its own. An encrypted member is high. The rest are medium: an
+archive over 50 MB (not opened), a file that is not a readable zip, more than
+2,000 entries or 50 MB of uncompressed data (reading stops there), a member
+that fails to decompress, and an archive nested inside another one, which is
+reported but not opened.
+
 A symlink that points outside the skill is reported at medium and never
 followed. Whatever it points at is not part of the skill, and on the machine
 that installs it, the link can reach any file there. A link to another file
