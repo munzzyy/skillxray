@@ -28,6 +28,10 @@ _B64_LINE = re.compile(r"^[A-Za-z0-9+/]{500,}={0,2}$", re.MULTILINE)
 def hygiene_checks(unit: SkillUnit) -> list:
     """Return [(name, ok, detail)] - the score is passed/total of these."""
     checks: list = []
+    if unit.kind == "root":
+        # Leftover files around the skills are not a skill; SKILL.md hygiene
+        # has nothing to measure there.
+        return checks
     fm = unit.frontmatter or {}
     has_md = unit.skill_md is not None
     checks.append(("has SKILL.md", has_md,

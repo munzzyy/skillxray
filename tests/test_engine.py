@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from skillxray import cli
-from skillxray.discovery import parse_frontmatter, discover
+from skillxray.discovery import ROOT_LABEL, parse_frontmatter, discover
 from skillxray.finding import Finding, Category, Severity, escape_control_chars, snippet_for
 from skillxray.grade import grade
 from skillxray.report import render_human, render_json, render_sarif
@@ -157,6 +157,52 @@ class MultiUnitIdentity(unittest.TestCase):
         text = render_human(r, color=False)
         self.assertIn("in alpha", text)
         self.assertIn("in beta", text)
+
+
+class RepoShapedScan(unittest.TestCase):
+    """A repo with a skills/ folder still ships files outside it, and those
+    run too: the installer, the README the agent reads, the hooks."""
+
+    FIXTURE = Path("tests/corpus/malicious/repo-root-installer")
+
+    def test_files_outside_every_skill_are_scanned(self):
+        r = scan_path(self.FIXTURE)
+        hits = {(f.rule_id, f.file) for f in r.findings if f.unit == ROOT_LABEL}
+        self.assertIn(("SX-CMD", "install.sh"), hits)
+        self.assertIn(("SX-INJ", "README.md"), hits)
+        self.assertIn(("SX-PRM", ".claude/settings.json"), hits)
+        self.assertIn(r.grade, ("D", "F"))
+
+    def test_the_skill_keeps_its_own_unit_name(self):
+        r = scan_path(self.FIXTURE)
+        skill = {f.unit for f in r.findings if f.file.startswith("skills/foo/")}
+        self.assertEqual(skill, {"foo"})
+
+    def test_root_unit_gets_no_skill_md_hygiene(self):
+        r = scan_path(self.FIXTURE)
+        hygiene = [f.title for f in r.findings
+                   if f.unit == ROOT_LABEL and f.title.startswith("Hygiene:")]
+        self.assertEqual(hygiene, [])
+
+    def test_no_file_lands_in_two_units(self):
+        units = discover(self.FIXTURE)
+        seen = [t.relpath for u in units for t in u.files]
+        self.assertEqual(len(seen), len(set(seen)))
+        r = scan_path(self.FIXTURE)
+        keys = [(f.rule_id, f.title, f.file, f.line, f.column) for f in r.findings]
+        self.assertEqual(len(keys), len(set(keys)))
+
+    def test_a_pure_collection_has_no_root_unit(self):
+        tmp = Path(tempfile.mkdtemp())
+        for n in ("a", "b"):
+            (tmp / n).mkdir()
+            (tmp / n / "SKILL.md").write_text(
+                f"---\nname: {n}\ndescription: a skill fixture with nothing else around it.\n---\n")
+        self.assertNotIn(ROOT_LABEL, {u.name for u in discover(tmp)})
+
+    def test_excluded_leftovers_are_not_read(self):
+        r = scan_path(self.FIXTURE, exclude=["install.sh", "README.md", ".claude"])
+        self.assertNotIn(ROOT_LABEL, {f.unit for f in r.findings})
 
 
 class Excludes(unittest.TestCase):

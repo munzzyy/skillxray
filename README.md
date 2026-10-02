@@ -57,6 +57,8 @@ skillxray --git https://github.com/someone/their-skill   # clone (read-only) and
 skillxray --git https://github.com/a/skill https://github.com/b/skill   # scan a whole list in one run
 ```
 
+Point it at a folder and it reads every text file in it. Files inside a skill or plugin folder are reported under that skill's name. Anything outside all of them, like a repo's install script, its README, or a `.claude/settings.json` at the root, is reported under `(repo root)`, because the agent reads and runs those too.
+
 Nothing in a scanned skill is ever executed. `--git` clones shallowly with hooks disabled, caps how much of any single file it will pull down, and only reads files. Pass it more than one URL to scan a whole list of repos under one `--fail-on` threshold instead of running skillxray once per repo.
 
 ### In CI
@@ -99,13 +101,15 @@ Or skip the two steps and use the packaged action, which installs skillxray, sca
 
 ### Excluding paths
 
-Any repo that ships security fixtures, a red-team corpus, or docs that quote `curl | sh` will light up, including this one. `--exclude` takes a glob relative to the path you scanned and is repeatable:
+Any repo that ships security fixtures, a red-team corpus, or docs that quote `curl | sh` will light up. `--exclude` takes a glob relative to the path you scanned and is repeatable:
 
 ```bash
 skillxray . --exclude 'tests/corpus/*' --exclude 'examples/*'
 ```
 
 Globs match on forward slashes on every platform, and a bare directory name excludes everything under it.
+
+When most of a repo quotes attacks on purpose, this one included (tests, docs and the rules themselves), scanning just the skill folder is simpler than excluding everything around it: `skillxray skills/`.
 
 ### Turning individual rules off
 
@@ -151,7 +155,7 @@ Plenty of scanners are adjacent to this and none of them cover it:
 
 - It's a static scanner. It reads text and matches patterns; it does not run the skill or trace what a script actually does at runtime. A determined attacker can obfuscate past any static rule, and skillxray flags obfuscation itself (base64-to-shell, hidden Unicode) rather than pretending to defeat it.
 - A clean grade means nothing obvious tripped, not that the skill is safe. Read anything before you trust it with your machine.
-- It expects skill-shaped input (a `SKILL.md`, a plugin, or a folder of them). Point it at an arbitrary code repo and you'll get noisier results, because it will read every text file it finds.
+- It's built for skill-shaped input (a `SKILL.md`, a plugin, or a folder of them). It reads every text file under the path you give it, except inside `.git`, `node_modules`, virtualenvs, `dist`, `build` and editor or cache folders, so a whole code repo gives noisier results: tests, docs and source that quote an attack get flagged like the real thing.
 - It is not a secret scanner for your whole git history. It checks the files in front of it.
 
 ## How it works

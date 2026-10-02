@@ -3,7 +3,9 @@
 A "skill unit" is one of:
   - a directory containing a SKILL.md (an Agent Skill),
   - a directory containing .claude-plugin/plugin.json (a Claude Code plugin),
-  - a lone SKILL.md pointed at directly.
+  - a lone SKILL.md pointed at directly,
+  - the files of a scanned folder that sit outside every skill and plugin in
+    it (a repo's installer, README and settings), labeled ROOT_LABEL.
 
 We deliberately avoid a YAML dependency. Frontmatter is parsed by a small,
 tolerant reader that handles the scalars and simple lists skills actually use
@@ -43,6 +45,7 @@ MANIFEST_NAMES = {
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist",
              "build", ".mypy_cache", ".pytest_cache", ".idea", ".vscode"}
 MAX_FILE_BYTES = 2_000_000  # skip anything larger; skills should be small
+ROOT_LABEL = "(repo root)"
 
 # A shebang line naming a real interpreter. Extension lists always have holes,
 # so the file's own first line gets the final say: an extensionless `install`
@@ -85,13 +88,16 @@ class ScanTarget:
 @dataclass
 class SkillUnit:
     root: Path
-    kind: str  # skill | plugin | loose
+    kind: str  # skill | plugin | loose | root
     skill_md: Optional[ScanTarget] = None
     files: list = field(default_factory=list)  # list[ScanTarget]
     frontmatter: dict = field(default_factory=dict)
+    label: str = ""
 
     @property
     def name(self) -> str:
+        if self.label:
+            return self.label
         fm_name = self.frontmatter.get("name")
         if isinstance(fm_name, str) and fm_name.strip():
             return fm_name.strip()
@@ -294,30 +300,37 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=()) -> list:
             units.append(unit)
         return units
 
-    # Otherwise treat it as a collection: find nested skill/plugin roots.
-    seen_roots: set = set()
+    # Otherwise treat it as a collection: find nested skill/plugin roots. A
+    # unit never nests inside another, so the walk stops at each one, and every
+    # file it passes on the way is a leftover that belongs to no unit.
+    leftovers: list = []
     for dirpath, dirnames, filenames in os.walk(path):
-        dirnames[:] = [
-            d for d in dirnames
-            if d not in SKIP_DIRS
-            and not excluded(_rel_to(Path(dirpath) / d, rel_base), exclude)
-        ]
         d = Path(dirpath)
-        kind = _unit_kind(d)
-        if kind and d not in seen_roots:
-            # avoid nesting a skill inside an already-claimed plugin root
-            if any(str(d).startswith(str(r) + os.sep) for r in seen_roots):
-                continue
-            unit = _build_unit(d, kind=kind, rel_base=rel_base, exclude=exclude)
-            if unit:
-                units.append(unit)
-                seen_roots.add(d)
+        kind = _unit_kind(d) if d != path else None
+        if kind:
+            units.append(_build_unit(d, kind=kind, rel_base=rel_base, exclude=exclude))
+            dirnames[:] = []
+            continue
+        dirnames[:] = [
+            dn for dn in dirnames
+            if dn not in SKIP_DIRS
+            and not excluded(_rel_to(d / dn, rel_base), exclude)
+        ]
+        for fn in filenames:
+            fp = d / fn
+            if not excluded(_rel_to(fp, rel_base), exclude):
+                leftovers.append(fp)
     if not units:
         # No formal skill markers: scan the directory as a loose unit so the
         # user still gets results instead of silence.
         unit = _build_unit(path, kind="loose", rel_base=rel_base, exclude=exclude)
-        if unit and unit.files:
+        if unit.files:
             units.append(unit)
+    elif leftovers:
+        # A repo with a skills/ folder still ships its installer, README and
+        # hooks at the root, and those run too.
+        units.append(_build_unit(path, kind="root", rel_base=rel_base,
+                                 exclude=exclude, paths=leftovers, label=ROOT_LABEL))
     return units
 
 
@@ -330,15 +343,17 @@ def _unit_kind(d: Path) -> Optional[str]:
 
 
 def _build_unit(root: Path, kind: str, rel_base: Optional[Path] = None,
-                exclude=()) -> Optional[SkillUnit]:
-    unit = SkillUnit(root=root, kind=kind)
+                exclude=(), paths=None, label: str = "") -> SkillUnit:
+    unit = SkillUnit(root=root, kind=kind, label=label)
     base = root if rel_base is None else rel_base
-    for fp in _iter_files(root, base, exclude):
+    if paths is None:
+        paths = _iter_files(root, base, exclude)
+    for fp in paths:
         t = _read(fp, base)
         if t is None:
             continue
         unit.files.append(t)
-        if fp.name.lower() == "skill.md" and unit.skill_md is None:
+        if kind != "root" and fp.name.lower() == "skill.md" and unit.skill_md is None:
             unit.skill_md = t
     if unit.skill_md is not None:
         unit.frontmatter = parse_frontmatter(unit.skill_md.text)
