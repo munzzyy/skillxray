@@ -53,8 +53,7 @@ SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist",
 MAX_FILE_BYTES = 2_000_000  # skip anything larger; skills should be small
 ROOT_LABEL = "(repo root)"
 
-# Zip containers skills and MCP bundles ship in. Members are read in memory,
-# never written to disk, and an archive inside one is reported, not opened.
+# Members are read in memory, never written to disk; a nested archive is reported, not opened.
 ARCHIVE_EXTS = {".zip", ".skill", ".mcpb", ".dxt"}
 MAX_ARCHIVE_BYTES = 50_000_000
 MAX_ARCHIVE_MEMBERS = 2_000
@@ -146,8 +145,7 @@ def _read(path: Path, root: Path, unit_root: Optional[Path] = None) -> Optional[
     # MAX_FILE_BYTES and flag it oversized so the prefix is still checked.
     oversized = False
     try:
-        # A link out of the skill can reach any file on the machine running the
-        # scan, or /dev/stdin and hang it, so it is reported and never opened.
+        # A link out of the skill can reach any file on the runner, or hang the scan on /dev/stdin.
         if unit_root is not None and path.is_symlink() and not _inside(path, unit_root):
             return ScanTarget(path=path, relpath=rel, kind="symlink", link=os.readlink(path))
         st = path.stat()
@@ -336,7 +334,7 @@ def parse_frontmatter(text: str) -> dict:
             if isinstance(out[key], list):
                 out[key].append(_scalar(ln.strip()[2:]))
             continue
-        if indented and key in plain:
+        if indented and key in plain and not _NESTED_KEY.match(ln.strip()):
             plain[key] += " " + ln.strip()
             out[key] = _scalar(plain[key])
             continue
@@ -361,6 +359,8 @@ def parse_frontmatter(text: str) -> dict:
     return out
 
 
+# A plain scalar can't hold ": ", so an indented line with one is a nested key, not a wrapped value.
+_NESTED_KEY = re.compile(r"^[^#\s][^:]*:(?:\s|$)")
 # `|` or `>`, then an optional indentation digit and chomping sign in either order.
 _BLOCK_HEADER = re.compile(r"^([|>])(?:([1-9])([+-])?|([+-])([1-9])?)?\s*(?:#.*)?$")
 
@@ -490,9 +490,7 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
             units.append(unit)
         return units
 
-    # Otherwise treat it as a collection: find nested skill/plugin roots. A
-    # unit never nests inside another, so the walk stops at each one, and every
-    # file it passes on the way is a leftover that belongs to no unit.
+    # A collection: units never nest, so the walk stops at each one and the rest are leftovers.
     leftovers: list = []
     for dirpath, dirnames, filenames in os.walk(path):
         d = Path(dirpath)
@@ -518,8 +516,7 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
         if unit.files:
             units.append(unit)
     elif leftovers:
-        # A repo with a skills/ folder still ships its installer, README and
-        # hooks at the root, and those run too.
+        # A repo's installer, README and hooks sit beside its skills, and those run too.
         units.append(_build_unit(path, kind="root", rel_base=rel_base, exclude=exclude,
                                  paths=leftovers, label=ROOT_LABEL, budget=budget))
     return units

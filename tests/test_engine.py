@@ -72,14 +72,20 @@ class Frontmatter(unittest.TestCase):
         self.assertEqual(fm["description"], "Summarizes a PDF in a few lines.")
         self.assertEqual(fm["name"], "quoted that wraps")
 
+    def test_a_nested_key_is_not_read_as_a_wrapped_value(self):
+        fm = parse_frontmatter("---\nname: n\nmetadata:\n  author: x\n  version: 1\n"
+                               "  allowed-tools: Bash\n---\n")
+        self.assertEqual(fm["author"], "x")
+        self.assertEqual(fm["version"], "1")
+        self.assertEqual(fm["allowed-tools"], "Bash")
+
     def test_block_scalar_frontmatter_reads_like_any_other(self):
         r = scan_files({"SKILL.md": self.FOLDED})
         self.assertIn("Skill can run shell commands", {f.title for f in r.findings})
         self.assertNotIn("Hygiene: description length sane failed", {f.title for f in r.findings})
 
     def test_never_raises_on_noise(self):
-        # Half the inputs are raw bytes; the rest are built from YAML-ish
-        # pieces so block headers, indentation and blank lines actually occur.
+        # Half are YAML-ish pieces, so block headers, indents and blank lines actually occur.
         rng = random.Random(1729)
         pieces = [b"key:", b" |", b" >-", b" |+2", b" >", b"- ", b"#", b'"', b"'", b"[a, b]",
                   b"...", b"---", b"\t", b"x", b"\xff\xfe", b":", b""]

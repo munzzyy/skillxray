@@ -167,7 +167,7 @@ Every check is a deterministic rule over the skill's text. No model calls, no ne
 
 ## Roadmap
 
-What is left needs a person rather than more code: a release, a package index account, and a couple of calls on how strict the scanner should be.
+These four need a person, not more code: a release, a package index account, and a couple of calls on how strict the scanner should be.
 
 - The next release. Everything on main since v0.2.1 is unreleased: whole-repo scans, zipped bundles, hook commands read for dangerous shapes, redaction across the whole report, and the symlink and FIFO guards. The `@v0.2.1` pins above don't have any of it. Pin a commit from main if you need it before the tag.
 - A current PyPI package. PyPI still serves 0.1.0, which is why [Install](#install) points at git. The release workflow can publish, but the trusted publisher on pypi.org isn't set up yet.

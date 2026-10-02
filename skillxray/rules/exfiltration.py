@@ -24,8 +24,7 @@ RULE_LEVEL = "error"
 _I = re.IGNORECASE
 
 # Endpoints whose whole purpose is receiving exfiltrated data / out-of-band callbacks.
-# A bare domain must stand alone as a host, so s3-transfer.sh, profile.io and
-# scripts/transfer.sh don't match.
+# A bare domain must stand alone as a host, so s3-transfer.sh and profile.io don't match.
 _HOST_START = r"(?:(?<=//)|(?<=[.@])|(?<![\w./-]))"
 _BARE_SINKS = (
     r"webhook\.site|requestbin\.\w+|pipedream\.net|"

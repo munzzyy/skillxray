@@ -605,8 +605,7 @@ class QualityRule(unittest.TestCase):
         self.assertTrue(any("missing" in f.detail.lower() or "ref" in f.title.lower() for f in q))
 
     def test_oversized_file_is_a_security_finding(self):
-        # Truncation is how a padded payload hides, so it has to count
-        # toward the gate rather than sit in hygiene.
+        # Truncation is how a padded payload hides, so it counts toward the gate.
         from skillxray.discovery import MAX_FILE_BYTES
         big = b"a" * (MAX_FILE_BYTES + 1000)
         r = scan_files({"SKILL.md": _min_md("body"), "big.txt": big})

@@ -28,8 +28,7 @@ def hygiene_checks(unit: SkillUnit) -> list:
     """Return [(name, ok, detail)] - the score is passed/total of these."""
     checks: list = []
     if unit.kind == "root":
-        # Leftover files around the skills are not a skill; SKILL.md hygiene
-        # has nothing to measure there.
+        # Leftover files beside the skills aren't a skill, so SKILL.md hygiene doesn't apply.
         return checks
     fm = unit.frontmatter or {}
     has_md = unit.skill_md is not None
