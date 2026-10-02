@@ -16,6 +16,7 @@ does not try to be - it only needs enough to reason about a handful of keys.
 
 from __future__ import annotations
 
+import codecs
 import fnmatch
 import os
 import re
@@ -157,25 +158,30 @@ def _read(path: Path, root: Path, unit_root: Optional[Path] = None) -> Optional[
     except OSError:
         return None
     return _decode(ScanTarget(path=path, relpath=rel, kind=classify(path), raw=raw,
-                              oversized=oversized))
+                              oversized=oversized), cut=oversized)
 
 
-def _decode(target: ScanTarget) -> ScanTarget:
+def _utf8(raw: bytes, cut: bool, errors: str = "strict") -> str:
+    # A read stopped at a size limit can end partway through a character.
+    return codecs.getincrementaldecoder("utf-8")(errors).decode(raw, final=not cut)
+
+
+def _decode(target: ScanTarget, cut: bool) -> ScanTarget:
     raw = target.raw
     if target.kind == "binary":
         # Salvage files with an unknown extension that are really UTF-8 text
         # (e.g. .pem keys, extensionless configs) so their contents get scanned.
         if b"\x00" not in raw:
             try:
-                target.text = raw.decode("utf-8")
+                target.text = _utf8(raw, cut)
                 target.kind = "data"
             except UnicodeDecodeError:
                 pass
     else:
         try:
-            target.text = raw.decode("utf-8")
+            target.text = _utf8(raw, cut)
         except UnicodeDecodeError:
-            target.text = raw.decode("utf-8", errors="replace")
+            target.text = _utf8(raw, cut, errors="replace")
             target.decode_error = True
     # The shebang wins over the extension, but never demotes markdown or a
     # manifest: those are read whole by their own rules already.
@@ -245,7 +251,7 @@ def _archive_members(t: ScanTarget, budget: ArchiveBudget) -> list:
             members.append(_decode(ScanTarget(
                 path=PurePosixPath(info.filename), relpath=f"{t.relpath}!{name}",
                 kind=classify(PurePosixPath(info.filename)), raw=raw,
-                oversized=info.file_size > MAX_FILE_BYTES)))
+                oversized=info.file_size > MAX_FILE_BYTES), cut=len(raw) < info.file_size))
             if len(raw) < min(info.file_size, MAX_FILE_BYTES):
                 t.notes.append((stop, name))
                 break
