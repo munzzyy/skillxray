@@ -172,6 +172,12 @@ reviewer: Unicode tag characters (U+E0000 to U+E007F), bidi overrides
 (Trojan Source), zero-width characters splitting words, and unusual
 paragraph separators.
 
+A run of tag characters or variation selectors is one finding, and its
+detail says what the run decodes to. Everywhere in the report, snippets and
+file names included, tag characters, bidi controls, zero-width characters
+and the two separators are printed as visible markers like `<U+202E>`. The
+report never hides or reorders the text it is pointing at.
+
 ```text
 Normal text with U+E0001-style tag characters hiding instructions.
 ```

@@ -117,8 +117,8 @@ class SkillUnit:
             return self.label
         fm_name = self.frontmatter.get("name")
         if isinstance(fm_name, str) and fm_name.strip():
-            return fm_name.strip()
-        return self.root.name
+            return escape_control_chars(fm_name.strip())
+        return escape_control_chars(self.root.name)
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -137,7 +137,7 @@ def _read(path: Path, root: Path, unit_root: Optional[Path] = None) -> Optional[
         rel = str(path.relative_to(root))
     except ValueError:
         rel = path.name
-    rel = rel.replace(os.sep, "/")
+    rel = escape_control_chars(rel.replace(os.sep, "/"))
     if os.altsep:
         rel = rel.replace(os.altsep, "/")
     # Never fail open on a big file: instead of skipping it wholesale (which lets

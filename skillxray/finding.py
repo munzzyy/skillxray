@@ -109,14 +109,24 @@ def line_col(text: str, index: int) -> tuple[int, int]:
 
 
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+# Characters that render as nothing or reorder the text around them: bidi
+# controls, zero-width and other invisible format characters, the line and
+# paragraph separators, and the tag block.
+_INVISIBLE_RE = re.compile(
+    "[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff"
+    "\U000e0000-\U000e007f]"
+)
 
 
 def escape_control_chars(text: str) -> str:
     """Replace any C0/C1 control byte -- ESC included -- with a visible \\xNN
-    placeholder. Snippets and finding details are built from scanned file
-    content, which is untrusted: without this, a crafted file can plant
-    terminal escape codes that survive verbatim into the printed report."""
-    return _CONTROL_RE.sub(lambda m: f"\\x{ord(m.group(0)):02x}", text)
+    placeholder, and any invisible or reordering character with <U+XXXX>.
+    Snippets and finding details are built from scanned file content, which
+    is untrusted: without this, a crafted file can plant terminal escape codes
+    that survive verbatim into the printed report, or hide the very text a
+    finding is pointing at."""
+    text = _CONTROL_RE.sub(lambda m: f"\\x{ord(m.group(0)):02x}", text)
+    return _INVISIBLE_RE.sub(lambda m: f"<U+{ord(m.group(0)):04X}>", text)
 
 
 def snippet_for(text: str, index: int, width: int = 120) -> str:

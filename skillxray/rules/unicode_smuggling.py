@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from ..finding import Finding, Category, Severity, line_col, snippet_for
 from ..discovery import SkillUnit
+from ..secret_shapes import redact
 from ._util import text_targets
 
 RULE_ID = "SX-UNI"
@@ -82,21 +83,13 @@ def check(unit: SkillUnit) -> list:
     for t in text_targets(unit):
         text = t.text
         findings.extend(_variation_selector_runs(t, text))
+        findings.extend(_tag_runs(t, text))
         # A BOM at position 0 is benign and common; only flag it mid-file.
         for i, ch in enumerate(text):
             cp = ord(ch)
             if cp == 0xFEFF and i == 0:
                 continue
-            if _is_tag_char(cp):
-                findings.append(_f(
-                    t, text, i, Severity.CRITICAL,
-                    "Invisible Unicode tag character",
-                    f"U+{cp:04X} is a Unicode tag character. These are invisible and "
-                    "are the standard way to smuggle hidden ASCII instructions into "
-                    "text a model will read but a human will not.",
-                    "Remove the tag characters. If you need literal tags, document them explicitly.",
-                ))
-            elif cp in _BIDI:
+            if cp in _BIDI:
                 findings.append(_f(
                     t, text, i, Severity.CRITICAL,
                     "Bidirectional control character",
@@ -159,8 +152,39 @@ def _variation_selector_runs(target, text: str) -> list:
             f"A run of {i - start} variation selectors is appended to the text. "
             "These are invisible and each one carries a byte, the standard way to "
             "smuggle hidden ASCII a model reads but a human never sees. "
-            f"Decodes to: {printable!r}",
+            f"Decodes to: {redact(printable)!r}",
             "Remove the variation selectors. Text should say only what it appears to say.",
+        ))
+    return findings
+
+
+def _tag_runs(target, text: str) -> list:
+    """One finding per run of tag characters, with the ASCII it spells.
+
+    Each tag character U+E0020..U+E007E mirrors a printable ASCII byte, so a
+    run is hidden text the model reads. Reporting every character on its own
+    buried the message under one finding per letter and never said what it was.
+    """
+    findings: list = []
+    n = len(text)
+    i = 0
+    while i < n:
+        if not _is_tag_char(ord(text[i])):
+            i += 1
+            continue
+        start = i
+        while i < n and _is_tag_char(ord(text[i])):
+            i += 1
+        hidden = "".join(chr(ord(c) - 0xE0000) if 0xE0020 <= ord(c) <= 0xE007E else "."
+                         for c in text[start:i])
+        findings.append(_f(
+            target, text, start, Severity.CRITICAL,
+            "Invisible Unicode tag characters",
+            f"Invisible Unicode tag characters ({i - start}). Each one mirrors an "
+            "ASCII character, the standard way to smuggle hidden instructions into "
+            "text a model will read but a human will not. "
+            f"Decodes to: {redact(hidden)!r}",
+            "Remove the tag characters. If you need literal tags, document them explicitly.",
         ))
     return findings
 

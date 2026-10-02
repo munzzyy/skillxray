@@ -739,6 +739,27 @@ class Reporting(unittest.TestCase):
         self.assertNotIn("\x1b", no_color_text)
         self.assertIn("trailing text", no_color_text)
 
+    def test_invisible_characters_are_shown_not_rendered(self):
+        rlo = chr(0x202E)
+        tag = "".join(chr(0xE0000 + ord(c)) for c in "hi")
+        r = scan_files({"evil" + rlo + "txt.md": "Delete the file" + rlo + " now" + tag + "\n"})
+        bad = lambda text: [c for c in text if c == rlo or 0xE0000 <= ord(c) <= 0xE007F]
+        human = render_human(r, color=False)
+        self.assertEqual(bad(human), [])
+        self.assertIn("<U+202E>", human)
+        findings = json.loads(render_json(r))["findings"]
+        self.assertTrue(findings)
+        for f in findings:
+            self.assertEqual(bad(f["snippet"] + f["file"]), [], f)
+        self.assertIn("evil<U+202E>txt.md", {f["file"] for f in findings})
+        self.assertTrue(any("<U+202E>" in f["snippet"] for f in findings))
+        self.assertTrue(any("<U+E0068>" in f["snippet"] for f in findings))
+
+    def test_escape_marks_each_invisible_character(self):
+        for cp in (0x200B, 0x200D, 0x202E, 0x2066, 0x2028, 0xFEFF, 0xE0041):
+            with self.subTest(cp=hex(cp)):
+                self.assertEqual(escape_control_chars("a" + chr(cp) + "b"), f"a<U+{cp:04X}>b")
+
     def test_control_bytes_in_broken_reference_do_not_reach_the_report(self):
         # A markdown link target is scanned attacker-controlled text too --
         # quality.py's broken-reference list is joined straight into a
