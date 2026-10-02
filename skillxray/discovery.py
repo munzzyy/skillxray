@@ -285,9 +285,10 @@ def _iter_files(root: Path, rel_base: Path, exclude=()):
 def parse_frontmatter(text: str) -> dict:
     """Read the leading `---` fenced block into a flat dict.
 
-    Supports `key: value`, quoted values, and simple block/inline lists. Nested
-    mappings are ignored (returned as raw strings) - good enough for the keys we
-    care about, and never raises on malformed input.
+    Supports `key: value`, quoted values, plain values that wrap onto indented
+    lines, block scalars (`|`, `>`, with `-`/`+` chomping), and simple
+    block/inline lists. Nested mappings are ignored (returned as raw strings) -
+    good enough for the keys we care about, and never raises on malformed input.
     """
     if not text.startswith("---"):
         # tolerate a leading blank line / BOM
@@ -308,26 +309,98 @@ def parse_frontmatter(text: str) -> dict:
         body.append(ln)
     out: dict = {}
     key = None
-    for ln in body:
+    plain: dict = {}  # key -> its raw text so far, while it can still wrap
+    i = 0
+    while i < len(body):
+        ln = body[i]
+        i += 1
         if not ln.strip() or ln.lstrip().startswith("#"):
             continue
-        if ln[:1] in (" ", "\t") and ln.strip().startswith("- ") and key:
+        indented = ln[:1] in (" ", "\t")
+        if indented and ln.strip().startswith("- ") and key:
             out.setdefault(key, [])
             if isinstance(out[key], list):
                 out[key].append(_scalar(ln.strip()[2:]))
+            continue
+        if indented and key in plain:
+            plain[key] += " " + ln.strip()
+            out[key] = _scalar(plain[key])
             continue
         if ":" not in ln:
             continue
         k, _, v = ln.partition(":")
         key = k.strip()
         v = v.strip()
-        if v == "":
+        header = _BLOCK_HEADER.match(v)
+        if header:
+            parent = len(ln) - len(ln.lstrip())
+            lines, i = _block_lines(body, i, parent, header)
+            out[key] = _block_scalar(header, lines)
+        elif v == "":
             out[key] = []  # may be filled by following block list
         elif v.startswith("[") and v.endswith("]"):
             inner = v[1:-1].strip()
             out[key] = [_scalar(x) for x in _split_inline(inner)] if inner else []
         else:
             out[key] = _scalar(v)
+            plain[key] = v
+    return out
+
+
+# `|` or `>`, then an optional indentation digit and chomping sign in either order.
+_BLOCK_HEADER = re.compile(r"^([|>])(?:([1-9])([+-])?|([+-])([1-9])?)?\s*(?:#.*)?$")
+
+
+def _block_lines(body: list, i: int, parent: int, header) -> tuple:
+    """The lines of a block scalar starting at body[i], dedented, and the index
+    of the first line after it. Blank lines inside the block come back as ""."""
+    digit = header.group(2) or header.group(5)
+    indent = parent + int(digit) if digit else None
+    lines: list = []
+    while i < len(body):
+        ln = body[i]
+        if not ln.strip():
+            lines.append("")
+            i += 1
+            continue
+        n = len(ln) - len(ln.lstrip(" \t"))
+        if n <= parent:
+            break
+        if indent is None:
+            indent = n
+        if n < indent:
+            break
+        lines.append(ln[indent:])
+        i += 1
+    return lines, i
+
+
+def _block_scalar(header, lines: list) -> str:
+    trailing = 0
+    while lines and lines[-1] == "":
+        lines.pop()
+        trailing += 1
+    text = "\n".join(lines) if header.group(1) == "|" else _fold(lines)
+    chomp = header.group(3) or header.group(4) or ""
+    if not text or chomp == "-":
+        return text
+    return text + "\n" * (1 + (trailing if chomp == "+" else 0))
+
+
+def _fold(lines: list) -> str:
+    """YAML folding: neighbouring lines join with a space, a blank line is a
+    newline, and more-indented lines keep their line breaks."""
+    out = ""
+    for n, ln in enumerate(lines):
+        prev = lines[n - 1] if n else None
+        if ln == "":
+            out += "\n"
+        elif prev is None or prev == "":
+            out += ln
+        elif ln[:1] in (" ", "\t") or prev[:1] in (" ", "\t"):
+            out += "\n" + ln
+        else:
+            out += " " + ln
     return out
 
 

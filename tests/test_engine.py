@@ -2,6 +2,7 @@
 
 import io
 import json
+import random
 import contextlib
 import os
 import subprocess
@@ -48,6 +49,50 @@ class Frontmatter(unittest.TestCase):
     def test_dotdotdot_closes_frontmatter(self):
         fm = parse_frontmatter("---\nname: x\n...\nname: ignored\n")
         self.assertEqual(fm, {"name": "x"})
+
+    FOLDED = ("---\nname: folded\ndescription: >\n  Summarizes a PDF the user hands over\n"
+              "  and keeps the answer short.\nallowed-tools: >-\n  Bash Read Write\n---\nbody\n")
+
+    def test_folded_block_scalar_joins_its_lines(self):
+        fm = parse_frontmatter(self.FOLDED)
+        self.assertEqual(fm["description"],
+                         "Summarizes a PDF the user hands over and keeps the answer short.\n")
+        self.assertEqual(fm["allowed-tools"], "Bash Read Write")
+
+    def test_literal_block_scalar_keeps_newlines(self):
+        fm = parse_frontmatter("---\ndescription: |\n  line one\n  # still text\n\n  line three\n"
+                               "license: MIT\n---\n")
+        self.assertEqual(fm["description"], "line one\n# still text\n\nline three\n")
+        self.assertEqual(fm["license"], "MIT")
+
+    def test_plain_value_wraps_onto_indented_lines(self):
+        fm = parse_frontmatter('---\ndescription: Summarizes a PDF\n  in a few lines.\n'
+                               'name: "quoted that\n  wraps"\n---\n')
+        self.assertEqual(fm["description"], "Summarizes a PDF in a few lines.")
+        self.assertEqual(fm["name"], "quoted that wraps")
+
+    def test_block_scalar_frontmatter_reads_like_any_other(self):
+        r = scan_files({"SKILL.md": self.FOLDED})
+        self.assertIn("Skill can run shell commands", {f.title for f in r.findings})
+        self.assertNotIn("Hygiene: description length sane failed", {f.title for f in r.findings})
+
+    def test_never_raises_on_noise(self):
+        # Half the inputs are raw bytes; the rest are built from YAML-ish
+        # pieces so block headers, indentation and blank lines actually occur.
+        rng = random.Random(1729)
+        pieces = [b"key:", b" |", b" >-", b" |+2", b" >", b"- ", b"#", b'"', b"'", b"[a, b]",
+                  b"...", b"---", b"\t", b"x", b"\xff\xfe", b":", b""]
+        for _ in range(2000):
+            if rng.random() < 0.5:
+                raw = bytes(rng.randrange(256) for _ in range(rng.randrange(0, 160)))
+            else:
+                lines = [b" " * rng.randrange(0, 5)
+                         + b"".join(rng.choice(pieces) for _ in range(rng.randrange(0, 4)))
+                         for _ in range(rng.randrange(0, 12))]
+                raw = b"\n".join(lines)
+            if rng.random() < 0.7:
+                raw = b"---\n" + raw
+            parse_frontmatter(raw.decode("utf-8", errors="replace"))
 
 
 class Discovery(unittest.TestCase):
