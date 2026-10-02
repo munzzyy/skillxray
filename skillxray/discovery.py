@@ -18,6 +18,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -75,15 +76,16 @@ def classify(path: Path) -> str:
 class ScanTarget:
     path: Path
     relpath: str
-    kind: str  # markdown | script | manifest | data | binary
+    kind: str  # markdown | script | manifest | data | binary | symlink
     raw: bytes = b""
     text: str = ""
     decode_error: bool = False
     oversized: bool = False  # bigger than MAX_FILE_BYTES; only the prefix was read
+    link: str = ""  # kind == "symlink": where it points, never followed
 
     @property
     def is_text(self) -> bool:
-        return self.kind != "binary"
+        return self.kind not in ("binary", "symlink")
 
 
 @dataclass
@@ -105,18 +107,15 @@ class SkillUnit:
         return self.root.name
 
 
-def _read(path: Path, root: Path) -> Optional[ScanTarget]:
-    # Never fail open on a big file: instead of skipping it wholesale (which lets
-    # an attacker hide a payload behind 2 MB of padding), scan the first
-    # MAX_FILE_BYTES and flag it oversized so the prefix is still checked.
-    oversized = False
+def _inside(path: Path, root: Path) -> bool:
     try:
-        oversized = path.stat().st_size > MAX_FILE_BYTES
-        with open(path, "rb") as fh:
-            raw = fh.read(MAX_FILE_BYTES)
-    except OSError:
-        return None
-    kind = classify(path)
+        Path(os.path.realpath(path)).relative_to(os.path.realpath(root))
+        return True
+    except ValueError:
+        return False
+
+
+def _read(path: Path, root: Path, unit_root: Optional[Path] = None) -> Optional[ScanTarget]:
     # Relative paths are emitted verbatim into the report, into JSON, and into
     # SARIF artifactLocation.uri, which must be a forward-slash URI reference.
     # Normalize once here so every renderer agrees and Windows output is usable.
@@ -127,6 +126,24 @@ def _read(path: Path, root: Path) -> Optional[ScanTarget]:
     rel = rel.replace(os.sep, "/")
     if os.altsep:
         rel = rel.replace(os.altsep, "/")
+    # Never fail open on a big file: instead of skipping it wholesale (which lets
+    # an attacker hide a payload behind 2 MB of padding), scan the first
+    # MAX_FILE_BYTES and flag it oversized so the prefix is still checked.
+    oversized = False
+    try:
+        # A link out of the skill can reach any file on the machine running the
+        # scan, or /dev/stdin and hang it, so it is reported and never opened.
+        if unit_root is not None and path.is_symlink() and not _inside(path, unit_root):
+            return ScanTarget(path=path, relpath=rel, kind="symlink", link=os.readlink(path))
+        st = path.stat()
+        if not stat.S_ISREG(st.st_mode):
+            return None  # a FIFO or device blocks or never ends; neither holds skill text
+        oversized = st.st_size > MAX_FILE_BYTES
+        with open(path, "rb") as fh:
+            raw = fh.read(MAX_FILE_BYTES)
+    except OSError:
+        return None
+    kind = classify(path)
     target = ScanTarget(path=path, relpath=rel, kind=kind, raw=raw, oversized=oversized)
     if kind == "binary":
         # Salvage files with an unknown extension that are really UTF-8 text
@@ -350,11 +367,12 @@ def _build_unit(root: Path, kind: str, rel_base: Optional[Path] = None,
     if paths is None:
         paths = _iter_files(root, base, exclude)
     for fp in paths:
-        t = _read(fp, base)
+        t = _read(fp, base, unit_root=root)
         if t is None:
             continue
         unit.files.append(t)
-        if kind != "root" and fp.name.lower() == "skill.md" and unit.skill_md is None:
+        if (kind != "root" and t.is_text and fp.name.lower() == "skill.md"
+                and unit.skill_md is None):
             unit.skill_md = t
     if unit.skill_md is not None:
         unit.frontmatter = parse_frontmatter(unit.skill_md.text)

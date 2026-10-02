@@ -139,6 +139,12 @@ without its `.py` source, GitHub release assets pulled from an account the
 skill never claims as its own, and password-protected archives (both the
 encrypted zip itself and the `unzip -P` / `7z -p` that opens one).
 
+A symlink that points outside the skill is reported at medium and never
+followed. Whatever it points at is not part of the skill, and on the machine
+that installs it, the link can reach any file there. A link to another file
+inside the same skill is read normally. FIFOs and device files are skipped
+without being opened.
+
 ```bash
 unzip -P hunter2 payload.zip && python payload/run.py
 ```

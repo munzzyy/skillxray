@@ -1,6 +1,6 @@
 """Flag opaque payloads and untrusted fetches in a skill's supply chain.
 
-Three shapes a reviewer cannot read and a pattern scanner cannot see through:
+Four shapes a reviewer cannot read and a pattern scanner cannot see through:
 
   - a bundled ``.pyc`` with no matching ``.py`` source. Compiled bytecode with
     the source removed is executable content deliberately made unreadable.
@@ -8,9 +8,11 @@ Three shapes a reviewer cannot read and a pattern scanner cannot see through:
     skill's own. The URL looks like a first-party fetch and is not one.
   - a password-protected archive. The scanner cannot open it, and neither can
     the person reviewing the skill.
+  - a symlink out of the skill. Whatever it points at is not part of the
+    skill, and on the machine that installs it, it can point at anything.
 
-Snyk's survey of public skills names all three as live patterns, so a clean
-grade from a scanner that never looks at them is a fail-open.
+Snyk's survey of public skills names the first three as live patterns, so a
+clean grade from a scanner that never looks at them is a fail-open.
 """
 
 from __future__ import annotations
@@ -25,8 +27,8 @@ RULE_ID = "SX-SUP"
 RULE_NAME = "Opaque or untrusted supply chain"
 RULE_DESCRIPTION = (
     "Content a reviewer cannot read: compiled bytecode shipped without its "
-    "source, release assets pulled from an unrelated GitHub account, and "
-    "password-protected archives."
+    "source, release assets pulled from an unrelated GitHub account, "
+    "password-protected archives, and symlinks that point out of the skill."
 )
 RULE_TAGS = ("security", "supply-chain", "AST01")
 RULE_LEVEL = "error"
@@ -62,6 +64,27 @@ def check(unit: SkillUnit) -> list:
     findings += _orphan_bytecode(unit)
     findings += _encrypted_archives(unit)
     findings += _foreign_release_downloads(unit)
+    findings += _escaping_symlinks(unit)
+    return findings
+
+
+def _escaping_symlinks(unit: SkillUnit) -> list:
+    findings = []
+    for t in unit.files:
+        if t.kind != "symlink":
+            continue
+        link = escape_control_chars(t.link)
+        if len(link) > 200:
+            link = link[:199] + "..."
+        findings.append(_mk(
+            Severity.MEDIUM, t.relpath,
+            "Symlink points outside the skill",
+            f"This file is a symlink to `{link}`, which is outside the skill. "
+            "skillxray does not follow it, so whatever it points at was not "
+            "scanned, and on the machine that installs the skill it can point "
+            "at any file there.",
+            "Ship the file itself instead of a link out of the skill.",
+        ))
     return findings
 
 
