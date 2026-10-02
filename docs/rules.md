@@ -159,6 +159,7 @@ is a finding of its own:
 - an archive over 50 MB, which is not opened (medium)
 - a file that is not a readable zip (medium)
 - more than 2,000 entries or 50 MB of uncompressed data, where reading stops (medium)
+- archives that unpack to more than 20 times their size on disk, past a first 2 MB shared by the whole scan, where reading stops (medium)
 - a member that fails to decompress (medium)
 - an archive nested inside another one, reported but not opened (medium)
 

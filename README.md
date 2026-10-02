@@ -172,7 +172,7 @@ What is left needs a person rather than more code: a release, a package index ac
 - The next release. Everything on main since v0.2.1 is unreleased: whole-repo scans, zipped bundles, hook commands read for dangerous shapes, redaction across the whole report, and the symlink and FIFO guards. The `@v0.2.1` pins above don't have any of it. Pin a commit from main if you need it before the tag.
 - A current PyPI package. PyPI still serves 0.1.0, which is why [Install](#install) points at git. The release workflow can publish, but the trusted publisher on pypi.org isn't set up yet.
 - Whether a whole-repo scan should read `.github/workflows`. Today it does, like any other file outside a skill, so a workflow that pipes an installer into a shell grades the repo F. `--exclude .github` turns that off until this is settled.
-- The severities of the newer findings. A truncated file, a symlink out of a skill and an archive that could not be fully read are all medium for now, which fails a `--fail-on medium` gate. Expect them to move if they turn out noisy on real skills.
+- The severities of the newer findings. A truncated file, a symlink out of a skill and an archive that could not be fully read are all medium for now, which fails a `--fail-on medium` gate. So is an archive that unpacks to more than 20 times its size, and that cutoff is a guess too. Expect these to move if they turn out noisy on real skills.
 
 ## Contributing
 

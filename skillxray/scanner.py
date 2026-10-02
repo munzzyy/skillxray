@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .discovery import ARCHIVE_EXTS, discover, MAX_FILE_BYTES
+from .discovery import ARCHIVE_EXTS, ArchiveBudget, discover, MAX_FILE_BYTES
 from .finding import ScanResult
 from .grade import grade
 from .rules import run_all
@@ -23,13 +23,14 @@ def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
     units = []
     seen_roots: set = set()
     read: set = set()
+    budget = ArchiveBudget()
     bundles = any(_is_bundle(Path(p)) for p in paths)
     # Named bundles go last, so one a named folder already holds is read once, as part of it.
     for target in sorted((Path(p) for p in paths), key=_is_bundle):
         base = target if target.is_dir() else target.parent
         if _is_bundle(target) and os.path.realpath(target) in read:
             continue
-        for unit in discover(target, rel_base=base, exclude=exclude):
+        for unit in discover(target, rel_base=base, exclude=exclude, budget=budget):
             # pre-commit can hand us several files from one skill; scanning the
             # same unit twice would double every finding.
             key = (str(unit.root.resolve()), _is_bundle(target) and os.path.realpath(target))

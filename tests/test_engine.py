@@ -14,7 +14,8 @@ from pathlib import Path
 from unittest import mock
 
 from skillxray import cli
-from skillxray.discovery import ROOT_LABEL, parse_frontmatter, discover
+from skillxray.discovery import (ARCHIVE_RATIO, MAX_FILE_BYTES, ROOT_LABEL, discover,
+                                 parse_frontmatter)
 from skillxray.finding import Finding, Category, Severity, escape_control_chars, snippet_for
 from skillxray.grade import grade
 from skillxray.report import render_human, render_json, render_sarif
@@ -529,6 +530,40 @@ class Archives(unittest.TestCase):
         r = scan_path(link / "server.mcpb")
         self.assertIn("SX-INJ", {f.rule_id for f in r.findings})
         self.assertNotIn("Symlink points outside the skill", self._titles(r))
+
+    def _inflated(self, n, size):
+        return _zip({f"pad{i}.md": " " * size for i in range(n)})
+
+    def _member_bytes(self, units):
+        return sum(len(t.raw) for u in units for t in u.files if "!" in t.relpath)
+
+    def test_a_small_zip_cannot_inflate_into_minutes_of_scanning(self):
+        data = self._inflated(25, MAX_FILE_BYTES)
+        units = discover(self._dir({"bomb.zip": data}))
+        self.assertLessEqual(self._member_bytes(units), MAX_FILE_BYTES + ARCHIVE_RATIO * len(data))
+        self.assertIn("inflated", [code for u in units for t in u.files for code, _ in t.notes])
+
+    def test_the_inflation_budget_is_shared_by_every_archive_in_a_scan(self):
+        with mock.patch("skillxray.discovery.MAX_FILE_BYTES", 100_000):
+            data = self._inflated(10, 100_000)
+            tmp = self._dir({"a.zip": data, "b.zip": data, "c.zip": data})
+            units = discover(tmp)
+            r = scan_path(tmp)
+        self.assertLessEqual(self._member_bytes(units), 100_000 + 3 * ARCHIVE_RATIO * len(data))
+        partly = [f for f in r.findings if f.title == "Archive only partly scanned"]
+        self.assertEqual(len(partly), 3, r.findings)
+        self.assertTrue(all(f.severity == Severity.MEDIUM for f in partly))
+        self.assertIn("20 times", partly[0].detail)
+
+    def test_an_archive_after_an_inflated_one_is_still_read(self):
+        with mock.patch("skillxray.discovery.MAX_FILE_BYTES", 100_000):
+            bomb = self._dir({"bomb.zip": self._inflated(10, 100_000)})
+            plain = self._dir({"plain.zip": _zip(self.BUNDLE)})
+            r = scan_paths([bomb, plain])
+        self.assertIn(("SX-INJ", "plain.zip!zipped/SKILL.md"),
+                      {(f.rule_id, f.file) for f in r.findings})
+        partly = {f.file for f in r.findings if f.title == "Archive only partly scanned"}
+        self.assertEqual(partly, {"bomb.zip"})
 
     def test_member_names_are_escaped(self):
         r = scan_path(self._dir({"bundle.zip": _zip({"a\x1b[31m.md": self.INJ})}))

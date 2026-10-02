@@ -20,8 +20,8 @@ from __future__ import annotations
 import re
 
 from ..finding import Finding, Category, Severity, escape_control_chars
-from ..discovery import (MAX_ARCHIVE_BYTES, MAX_ARCHIVE_MEMBERS, MAX_ARCHIVE_TOTAL,
-                         MAX_FILE_BYTES, SkillUnit)
+from ..discovery import (ARCHIVE_RATIO, MAX_ARCHIVE_BYTES, MAX_ARCHIVE_MEMBERS,
+                         MAX_ARCHIVE_TOTAL, MAX_FILE_BYTES, SkillUnit)
 from ._util import text_targets
 
 RULE_ID = "SX-SUP"
@@ -105,6 +105,11 @@ _ARCHIVE_NOTES = {
                  f"Reading stopped at {MAX_ARCHIVE_TOTAL:,} uncompressed bytes, so this "
                  "member and everything after it were not fully scanned",
                  "Review the rest by hand, or ship the files unpacked."),
+    "inflated": (Severity.MEDIUM, "Archive only partly scanned",
+                 f"The archives in this scan unpack to more than {ARCHIVE_RATIO} times their "
+                 "size on disk, far past what real bundles do, so reading stopped and this "
+                 "member and everything after it were not fully scanned",
+                 "Review the rest by hand. A bundle this compressible is padded on purpose."),
     "nested": (Severity.MEDIUM, "Nested archive not scanned",
                "An archive inside an archive is not opened, so these were not scanned",
                "Ship nested bundles unpacked so they can be read."),
