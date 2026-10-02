@@ -5,6 +5,8 @@ A "skill unit" is one of:
   - a directory containing .claude-plugin/plugin.json (a Claude Code plugin),
   - a lone SKILL.md pointed at directly,
   - a lone zip bundle (.zip, .skill, .mcpb, .dxt) pointed at directly,
+  - any other lone file pointed at directly, like an install script or a
+    plugin.json, scanned on its own,
   - the files of a scanned folder that sit outside every skill and plugin in
     it (a repo's installer, README and settings), labeled ROOT_LABEL.
 
@@ -106,7 +108,7 @@ class ScanTarget:
 @dataclass
 class SkillUnit:
     root: Path
-    kind: str  # skill | plugin | loose | root
+    kind: str  # skill | plugin | loose | root | file
     skill_md: Optional[ScanTarget] = None
     files: list = field(default_factory=list)  # list[ScanTarget]
     frontmatter: dict = field(default_factory=dict)
@@ -483,6 +485,13 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
                            budget=budget)
         if unit:
             units.append(unit)
+        return units
+
+    if path.is_file():
+        paths = [] if excluded(path.name, exclude) else [path]
+        units.append(_build_unit(path.parent, kind="file", rel_base=rel_base, exclude=exclude,
+                                 paths=paths, label=escape_control_chars(path.name),
+                                 budget=budget, follow=True))
         return units
 
     if not path.is_dir():

@@ -204,6 +204,64 @@ class SingleFileScan(unittest.TestCase):
         r = scan_path(self._skill_with_a_script() / "SKILL.md", exclude=["scripts/*"])
         self.assertFalse([f for f in r.findings if "install.sh" in f.file], r.findings)
 
+    def test_a_lone_script_is_scanned_on_its_own(self):
+        r = scan_path("tests/corpus/malicious/cookie-stealer/setup.sh")
+        hits = {(f.rule_id, f.title, f.file) for f in r.findings}
+        self.assertIn(("SX-CMD", "Remote script piped to an interpreter", "setup.sh"), hits)
+        self.assertIn(("SX-EXF", "Reads sensitive files and can send them out", "setup.sh"), hits)
+        self.assertEqual((r.units, r.scanned_files, r.grade), (1, 1, "F"))
+
+    def test_a_lone_hook_script_fails_the_gate(self):
+        code, _ = CLI()._run(["tests/corpus/malicious/backdoor-plugin/hook.sh",
+                              "--fail-on", "high", "--quiet"])
+        self.assertEqual(code, 1)
+
+    def test_a_lone_plugin_json_reports_its_hook(self):
+        r = scan_path("tests/corpus/malicious/backdoor-plugin/.claude-plugin/plugin.json")
+        self.assertIn(("SX-PRM", "Auto-running hook on PreToolUse", "plugin.json"),
+                      {(f.rule_id, f.title, f.file) for f in r.findings})
+
+    def test_a_lone_file_gets_no_skill_md_hygiene(self):
+        r = scan_path("tests/corpus/malicious/cookie-stealer/setup.sh")
+        self.assertEqual(r.hygiene_checks, [])
+        self.assertFalse([f for f in r.findings if f.title.startswith("Hygiene:")], r.findings)
+
+    def test_two_lone_files_from_one_folder_are_both_read(self):
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "a.md").write_text("Nothing to see here.\n")
+        (tmp / "b.sh").write_text("crontab -l\n")
+        for order in (("a.md", "b.sh"), ("b.sh", "a.md")):
+            with self.subTest(order=order):
+                r = scan_paths([tmp / n for n in order])
+                self.assertEqual((r.units, r.scanned_files), (2, 2))
+                self.assertIn("b.sh", {f.file for f in r.findings if f.rule_id == "SX-CMD"})
+
+    def test_a_lone_file_and_its_folder_are_read_once(self):
+        root = Path("tests/corpus/malicious/cookie-stealer")
+        once = scan_paths([root])
+        for order in ((root / "setup.sh", root), (root, root / "setup.sh")):
+            with self.subTest(first=str(order[0])):
+                r = scan_paths(list(order))
+                self.assertEqual(r.units, 1)
+                self.assertEqual(sorted((f.rule_id, f.file, f.line) for f in r.findings),
+                                 sorted((f.rule_id, f.file, f.line) for f in once.findings))
+
+    def test_a_scan_that_reads_nothing_says_so(self):
+        empty = Path(tempfile.mkdtemp())
+        cases = (([str(empty)], str(empty)),
+                 (["tests/corpus/benign/weather", "--exclude", "*"], "tests/corpus/benign/weather"))
+        for argv, named in cases:
+            with self.subTest(target=named):
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    code, _ = CLI()._run(argv + ["--quiet"])
+                self.assertEqual(code, 0)
+                self.assertIn("no text files were read from " + named, err.getvalue())
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            CLI()._run(["tests/corpus/benign/weather", "--quiet"])
+        self.assertEqual(err.getvalue(), "")
+
     def test_duplicate_paths_are_not_scanned_twice(self):
         root = str(Path("tests/corpus/malicious/cookie-stealer"))
         once = scan_paths([root])

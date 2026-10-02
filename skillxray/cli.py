@@ -7,7 +7,7 @@ import os
 import sys
 
 from . import __version__
-from .finding import SECURITY_CATEGORIES, Severity
+from .finding import SECURITY_CATEGORIES, Severity, escape_control_chars
 from .report import render_human, render_json, render_sarif
 from .rules import RULE_METADATA
 from .scanner import scan_paths, scan_git_many
@@ -19,7 +19,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Security and hygiene scanner for AI agent skills (SKILL.md, plugins, MCP bundles).",
     )
     p.add_argument("target", nargs="*", default=None,
-                   help="path to a skill dir, a SKILL.md, or a directory of skills (default: .)")
+                   help="path to a skill dir, a SKILL.md, a directory of skills, or any "
+                        "single file such as a bundle or an install script (default: .)")
     p.add_argument("--git", metavar="URL", nargs="+",
                    help="clone one or more git repos (shallow, read-only) and scan them "
                         "instead of a local path; a single --fail-on gates the whole list")
@@ -121,6 +122,11 @@ def main(argv=None) -> int:
     except RuntimeError as e:
         print(f"skillxray: {e}", file=sys.stderr)
         return 2
+
+    if result.scanned_files == 0:
+        named = escape_control_chars(", ".join(args.git or targets))
+        print(f"skillxray: warning: no text files were read from {named}, so the grade "
+              "says nothing about it", file=sys.stderr)
 
     color = not args.no_color and sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
     if args.json:

@@ -16,7 +16,7 @@ inputs:
     default: "3.12"
   path:
     description: >-
-      Skill directory, a SKILL.md, or a directory of skills to scan.
+      Skill directory, a SKILL.md, a directory of skills, or a single file to scan.
     required: false
     default: "."
   fail-on:

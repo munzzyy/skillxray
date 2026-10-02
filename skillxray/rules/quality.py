@@ -27,8 +27,8 @@ _B64_LINE = re.compile(r"^[A-Za-z0-9+/]{500,}={0,2}$", re.MULTILINE)
 def hygiene_checks(unit: SkillUnit) -> list:
     """Return [(name, ok, detail)] - the score is passed/total of these."""
     checks: list = []
-    if unit.kind == "root":
-        # Leftover files beside the skills aren't a skill, so SKILL.md hygiene doesn't apply.
+    if unit.kind in ("root", "file"):
+        # Leftover files beside the skills, or one file on its own, aren't a skill.
         return checks
     fm = unit.frontmatter or {}
     has_md = unit.skill_md is not None

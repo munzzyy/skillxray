@@ -51,7 +51,8 @@ python -m skillxray ./some-skill      # run it directly, no install
 
 ```bash
 skillxray ./my-skill              # scan a skill directory
-skillxray ./SKILL.md              # scan a single file
+skillxray ./SKILL.md              # scan the skill this SKILL.md belongs to
+skillxray ./install.sh            # scan one file on its own, like a script you're told to run
 skillxray ./server.mcpb           # scan a zipped bundle without unpacking it
 skillxray ./skills-folder         # scan every skill under a folder
 skillxray --git https://github.com/someone/their-skill   # clone (read-only) and scan
