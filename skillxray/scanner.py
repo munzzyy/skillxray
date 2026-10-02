@@ -42,8 +42,9 @@ def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
         scanned += sum(1 for f in unit.files if f.is_text)
         # Tag every finding with the unit it came from: in a multi-skill scan
         # the file path alone does not say which skill is the bad one.
+        anchor = _anchor(unit)
         result.findings.extend(
-            dataclasses.replace(f, unit=unit.name, uri_base=uri_base)
+            dataclasses.replace(f, unit=unit.name, uri_base=uri_base, anchor=anchor)
             for f in run_all(unit, enabled=enabled)
         )
         # Keep the hygiene summary from the primary (or first) unit.
@@ -58,6 +59,18 @@ def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
     result.findings.sort(key=lambda f: f.sort_key())
     result.grade, result.grade_score = grade(result.findings)
     return result
+
+
+def _anchor(unit) -> str:
+    """Where SARIF pins a finding about the whole unit, since code scanning
+    rejects a result with no location: its plugin.json, else its first file."""
+    files = sorted((t for t in unit.files if isinstance(t.path, Path) and t.kind != "symlink"),
+                   key=lambda t: t.relpath)
+    for manifest in (unit.root / ".claude-plugin" / "plugin.json", unit.root / "plugin.json"):
+        for t in files:
+            if t.path == manifest:
+                return t.relpath
+    return files[0].relpath if files else ""
 
 
 def _uri_base(folder: Path) -> str:
@@ -103,6 +116,8 @@ def scan_git(url: str, ref: str | None = None, exclude=(), enabled=None) -> Scan
         subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=180)
         result = scan_path(dest, exclude=exclude, enabled=enabled)
         result.root = url
+        # Uris stay relative to the clone, even when the temp dir it sits in is under cwd.
+        result.findings = [dataclasses.replace(f, uri_base="") for f in result.findings]
         return result
     except FileNotFoundError:
         raise RuntimeError("git is not installed; --git needs git on PATH")

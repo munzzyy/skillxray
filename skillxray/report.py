@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import posixpath
 import re
 
 from . import __version__
@@ -138,12 +139,12 @@ def render_sarif(result: ScanResult) -> str:
         rules.append(rule)
     sarif_results = []
     for f in result.findings:
-        uri, member = f.file, None
-        m = _ARCHIVE_MEMBER.match(f.file)
+        uri, member = f.file or f.anchor or ".", None
+        m = _ARCHIVE_MEMBER.match(uri)
         if m:
             uri, member = m.group(1), m.group(2)
-        if f.uri_base and uri:
-            uri = f"{f.uri_base}/{uri}"
+        if f.uri_base:
+            uri = posixpath.normpath(f"{f.uri_base}/{uri}")
         loc = {
             "physicalLocation": {
                 "artifactLocation": {"uri": uri},
@@ -168,8 +169,7 @@ def render_sarif(result: ScanResult) -> str:
             "level": _SARIF_LEVEL[f.severity],
             "message": {"text": f"{f.title}: {f.detail}"},
             "properties": props,
-            # A unit-level hygiene note has no file; a made-up uri resolves nowhere.
-            "locations": [loc] if uri else [],
+            "locations": [loc],
         })
     doc = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",

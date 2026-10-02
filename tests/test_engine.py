@@ -603,7 +603,12 @@ class GitScanning(unittest.TestCase):
         (repo / "x.sh").write_text("crontab -l\n")
         subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
         subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "payload"], check=True)
-        doc = json.loads(render_sarif(scan_git(repo.as_uri())))
+        cwd = os.getcwd()
+        os.chdir(tempfile.gettempdir())  # the folder the clone lands in
+        try:
+            doc = json.loads(render_sarif(scan_git(repo.as_uri())))
+        finally:
+            os.chdir(cwd)
         uris = {loc["physicalLocation"]["artifactLocation"]["uri"]
                 for res in doc["runs"][0]["results"] for loc in res["locations"]}
         self.assertIn("x.sh", uris)
@@ -724,11 +729,12 @@ class Reporting(unittest.TestCase):
                 for res in doc["runs"][0]["results"] for loc in res["locations"]}
 
     def test_sarif_uris_resolve_from_the_working_directory(self):
-        # The README's own `skillxray ./skills --sarif` lands in code scanning,
-        # which resolves each uri from the repo root, not from ./skills.
+        # Code scanning resolves each uri from the repo root, not from the folder scanned.
         r = scan_path(Path("tests/corpus/malicious"))
         uris = self._sarif_uris(r)
         self.assertTrue(uris)
+        results = json.loads(render_sarif(r))["runs"][0]["results"]
+        self.assertEqual([x["ruleId"] for x in results if len(x["locations"]) != 1], [])
         self.assertEqual([u for u in uris if not os.path.exists(u)], [])
         self.assertIn("tests/corpus/malicious/cookie-stealer/setup.sh", uris)
 
@@ -753,12 +759,31 @@ class Reporting(unittest.TestCase):
         self.assertNotIn("region", loc)
         self.assertEqual(res["properties"]["archiveMember"], "zipped/run.sh")
 
-    def test_a_finding_with_no_file_has_no_location(self):
-        r = scan_files({"x.sh": "echo hi\n"})
+    def _hygiene_uris(self, r):
         doc = json.loads(render_sarif(r))
         hygiene = [x for x in doc["runs"][0]["results"] if x["ruleId"] == "SX-QLT"]
         self.assertTrue(hygiene)
-        self.assertTrue(all(x["locations"] == [] for x in hygiene))
+        return [[loc["physicalLocation"]["artifactLocation"]["uri"] for loc in x["locations"]]
+                for x in hygiene]
+
+    def test_a_finding_with_no_file_is_pinned_to_a_file_in_its_unit(self):
+        # GitHub rejects the whole upload when one result has no location.
+        r = scan_files({"x.sh": "echo hi\n"})
+        self.assertEqual({tuple(u) for u in self._hygiene_uris(r)}, {("x.sh",)})
+        self.assertEqual({f.file for f in r.findings if f.rule_id == "SX-QLT"}, {""})
+
+    def test_a_plugin_hygiene_finding_points_at_its_manifest(self):
+        r = scan_path(Path("tests/corpus/benign/mcp-plugin"))
+        want = ("tests/corpus/benign/mcp-plugin/.claude-plugin/plugin.json",)
+        self.assertEqual({tuple(u) for u in self._hygiene_uris(r)}, {want})
+        for manifest in (".claude-plugin/plugin.json", "plugin.json"):
+            with self.subTest(manifest=manifest):
+                tmp = Path(tempfile.mkdtemp())
+                for rel in (manifest, ".claude-plugin/marketplace.json", ".mcp.json"):
+                    (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+                    (tmp / rel).write_text("{}\n")
+                uris = self._hygiene_uris(scan_path(tmp))
+                self.assertEqual({tuple(u) for u in uris}, {(manifest,)})
 
     def test_sarif_uris_use_forward_slashes(self):
         # SARIF artifactLocation.uri is a URI reference. A native Windows path
