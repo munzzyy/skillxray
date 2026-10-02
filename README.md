@@ -165,6 +165,15 @@ Plenty of scanners are adjacent to this and none of them cover it:
 
 Every check is a deterministic rule over the skill's text. No model calls, no network (except `--git`, which only clones), no telemetry. Findings carry a rule id, severity, file and line, and a fix. The grade starts at 100 and loses points by severity, with two hard rules: any critical finding is an F, and any high keeps it out of the top band. The whole thing is standard-library Python so it installs anywhere and you can read every rule yourself in `skillxray/rules/`.
 
+## Roadmap
+
+What is left needs a person rather than more code: a release, a package index account, and a couple of calls on how strict the scanner should be.
+
+- The next release. Everything on main since v0.2.1 is unreleased: whole-repo scans, zipped bundles, hook commands read for dangerous shapes, redaction across the whole report, and the symlink and FIFO guards. The `@v0.2.1` pins above don't have any of it. Pin a commit from main if you need it before the tag.
+- A current PyPI package. PyPI still serves 0.1.0, which is why [Install](#install) points at git. The release workflow can publish, but the trusted publisher on pypi.org isn't set up yet.
+- Whether a whole-repo scan should read `.github/workflows`. Today it does, like any other file outside a skill, so a workflow that pipes an installer into a shell grades the repo F. `--exclude .github` turns that off until this is settled.
+- The severities of the newer findings. A truncated file, a symlink out of a skill and an archive that could not be fully read are all medium for now, which fails a `--fail-on medium` gate. Expect them to move if they turn out noisy on real skills.
+
 ## Contributing
 
 Found a skill that should have been flagged and wasn't, or a false positive? Open an issue with the smallest example that reproduces it. New rules land with a fixture in `tests/corpus/` (a malicious one that must be caught, or a benign one that must stay clean) so coverage only goes up.
