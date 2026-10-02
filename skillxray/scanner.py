@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 import shutil
 import subprocess
 import tempfile
@@ -23,25 +24,27 @@ def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
     seen_roots: set = set()
     for p in paths:
         target = Path(p)
-        for unit in discover(target, rel_base=target, exclude=exclude):
+        base = target if target.is_dir() else target.parent
+        for unit in discover(target, rel_base=base, exclude=exclude):
             # pre-commit can hand us several files from one skill; scanning the
             # same unit twice would double every finding.
             key = str(unit.root.resolve())
             if key in seen_roots:
                 continue
             seen_roots.add(key)
-            units.append(unit)
+            units.append((unit, _uri_base(base)))
 
     result = ScanResult(root=str(paths[0]) if len(paths) == 1 else "[multiple]")
     result.units = len(units)
     scanned = 0
     hygiene: dict = {}
-    for unit in units:
+    for unit, uri_base in units:
         scanned += sum(1 for f in unit.files if f.is_text)
         # Tag every finding with the unit it came from: in a multi-skill scan
         # the file path alone does not say which skill is the bad one.
         result.findings.extend(
-            dataclasses.replace(f, unit=unit.name) for f in run_all(unit, enabled=enabled)
+            dataclasses.replace(f, unit=unit.name, uri_base=uri_base)
+            for f in run_all(unit, enabled=enabled)
         )
         # Keep the hygiene summary from the primary (or first) unit.
         for name, ok, detail in hygiene_checks(unit):
@@ -55,6 +58,17 @@ def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
     result.findings.sort(key=lambda f: f.sort_key())
     result.grade, result.grade_score = grade(result.findings)
     return result
+
+
+def _uri_base(folder: Path) -> str:
+    """The folder relative to the working directory, so SARIF locations
+    resolve from where the scan ran. Empty when it lies outside (a --git
+    clone, a temp dir), which leaves them relative to the folder itself."""
+    try:
+        rel = Path(os.path.abspath(folder)).relative_to(os.getcwd()).as_posix()
+    except ValueError:
+        return ""
+    return "" if rel == "." else rel
 
 
 def scan_path(path, exclude=(), enabled=None) -> ScanResult:

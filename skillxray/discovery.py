@@ -361,9 +361,11 @@ def _scalar(v: str):
 def discover(path: Path, rel_base: Optional[Path] = None, exclude=()) -> list:
     """Return the skill units under `path` (or the single unit it names).
 
-    `rel_base` is the path the user actually asked for. Every finding's file is
-    reported relative to it, so a scan of a folder of skills says
-    `alpha/SKILL.md` instead of a bare `SKILL.md` that nothing can be traced to.
+    `rel_base` is the folder the user asked for, or the folder holding the file
+    they named. Every finding's file is reported relative to it, so a scan of a
+    folder of skills says `alpha/SKILL.md` instead of a bare `SKILL.md` that
+    nothing can be traced to, and naming a skill's SKILL.md reports the same
+    paths as naming its folder.
     """
     path = Path(path)
     units: list = []
@@ -371,8 +373,7 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=()) -> list:
         rel_base = path if path.is_dir() else path.parent
 
     if path.is_file() and path.suffix.lower() in ARCHIVE_EXTS:
-        base = path.parent if rel_base == path else rel_base
-        units.append(_build_unit(path.parent, kind="loose", rel_base=base,
+        units.append(_build_unit(path.parent, kind="loose", rel_base=rel_base,
                                  exclude=exclude, paths=[path]))
         return units
 

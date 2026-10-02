@@ -91,6 +91,8 @@ It also speaks SARIF, so findings show up in the GitHub Security tab, tagged wit
     sarif_file: skillxray.sarif
 ```
 
+Locations in the SARIF are relative to the directory you run skillxray from, so `./skills/foo/SKILL.md` shows up as that file in the repo, not as a bare `foo/SKILL.md`. A finding inside a zipped bundle points at the bundle and names the member.
+
 Or skip the two steps and use the packaged action, which installs skillxray, scans, and uploads the SARIF in one `uses:` (needs `security-events: write` for the upload). It installs the exact code at the ref you pin, so the rules always match the tag:
 
 ```yaml

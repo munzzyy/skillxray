@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from . import __version__
 from .finding import Severity, ScanResult, escape_control_chars
@@ -107,6 +108,9 @@ def render_json(result: ScanResult) -> str:
     return json.dumps(payload, indent=2)
 
 
+# An archive member has no file of its own on disk; SARIF points at the archive.
+_ARCHIVE_MEMBER = re.compile(r"^(.+?\.(?:zip|skill|mcpb|dxt))!(.+)$", re.IGNORECASE)
+
 _SARIF_LEVEL = {
     Severity.CRITICAL: "error",
     Severity.HIGH: "error",
@@ -134,12 +138,18 @@ def render_sarif(result: ScanResult) -> str:
         rules.append(rule)
     sarif_results = []
     for f in result.findings:
+        uri, member = f.file, None
+        m = _ARCHIVE_MEMBER.match(f.file)
+        if m:
+            uri, member = m.group(1), m.group(2)
+        if f.uri_base and uri:
+            uri = f"{f.uri_base}/{uri}"
         loc = {
             "physicalLocation": {
-                "artifactLocation": {"uri": f.file or "unknown"},
+                "artifactLocation": {"uri": uri},
             }
         }
-        if f.line:
+        if f.line and member is None:
             loc["physicalLocation"]["region"] = {
                 "startLine": f.line,
                 "startColumn": max(1, f.column),
@@ -151,12 +161,15 @@ def render_sarif(result: ScanResult) -> str:
             props["tags"] = meta["tags"]
         if f.unit:
             props["unit"] = f.unit
+        if member is not None:
+            props["archiveMember"] = member
         sarif_results.append({
             "ruleId": f.rule_id,
             "level": _SARIF_LEVEL[f.severity],
             "message": {"text": f"{f.title}: {f.detail}"},
             "properties": props,
-            "locations": [loc],
+            # A unit-level hygiene note has no file; a made-up uri resolves nowhere.
+            "locations": [loc] if uri else [],
         })
     doc = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",

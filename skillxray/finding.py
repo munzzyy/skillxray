@@ -64,6 +64,7 @@ class Finding:
     snippet: str = ""
     remediation: str = ""
     unit: str = ""  # name of the skill unit the finding came from
+    uri_base: str = ""  # scanned folder relative to the working directory, for SARIF
 
     def sort_key(self):
         # Worst first, then by location for stable output.
