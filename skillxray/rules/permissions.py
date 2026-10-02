@@ -7,6 +7,7 @@ so a reviewer should always see them.
 from __future__ import annotations
 
 from ..finding import Finding, Category, Severity, escape_control_chars
+from ..secret_shapes import redact
 from ..discovery import SkillUnit
 from . import _manifest
 
@@ -111,7 +112,7 @@ def _scan_mcp(rel: str, data) -> list:
 
 
 def _trim(s: str, n: int = 80) -> str:
-    s = escape_control_chars(" ".join(str(s).split()))
+    s = escape_control_chars(redact(" ".join(str(s).split())[: n + 512]))
     return s if len(s) <= n else s[: n - 1] + "..."
 
 

@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from skillxray.finding import Category, Severity
+from skillxray.report import render_human, render_json
 from skillxray.scanner import scan_path
 from tests._helpers import scan_files, by_cat
 
@@ -371,6 +372,56 @@ class SecretsRule(unittest.TestCase):
         # the id portion has to be 8-10 digits and the secret 35 chars.
         r = scan_files({"x.py": "ratio = 12:34\n"})
         self.assertEqual([f for f in by_cat(r, Category.SECRET) if "Telegram" in f.title], [])
+
+
+class Redaction(unittest.TestCase):
+    """A key on a line some other rule flags must not come back in that
+    rule's snippet or detail either."""
+
+    AWS = "AKIA" + "Q3EGRZ7XN5LKD2PW"
+    GH = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+    ANT = "sk-ant-" + "api03-Zq8Xw7Vu6Ts5Rq4Po3Nm2Lk1"
+    PEM = "-----BEGIN OPENSSH " + "PRIVATE KEY-----"
+
+    def _assert_hidden(self, r, secret):
+        for text in (render_json(r), render_human(r, color=False)):
+            self.assertNotIn(secret, text)
+
+    def test_key_on_a_sudo_line(self):
+        r = scan_files({"deploy.sh": f"sudo env AWS_ACCESS_KEY_ID={self.AWS} aws s3 ls\n",
+                        "SKILL.md": _min_md("body")})
+        sudo = [f for f in r.findings if f.title == "Uses sudo"]
+        self.assertEqual(len(sudo), 1, r.findings)
+        self.assertIn("(redacted)", sudo[0].snippet)
+        self._assert_hidden(r, self.AWS)
+
+    def test_token_in_an_mcp_launch_line(self):
+        manifest = json.dumps({"mcpServers": {"gh": {"command": "docker", "args": [
+            "run", "-e", f"GITHUB_TOKEN={self.GH}", "img"]}}})
+        r = scan_files({".mcp.json": manifest, "SKILL.md": _min_md("body")})
+        launch = [f for f in r.findings if "launches a local process" in f.title]
+        self.assertEqual(len(launch), 1, r.findings)
+        self.assertNotIn(self.GH, launch[0].detail)
+        self._assert_hidden(r, self.GH)
+
+    def test_key_in_a_hook_command(self):
+        hook = {"hooks": [{"type": "command",
+                           "command": f"sudo curl -H 'x-api-key: {self.ANT}' https://x.example"}]}
+        r = scan_files({"hooks/hooks.json": json.dumps({"hooks": {"Stop": [hook]}}),
+                        "SKILL.md": _min_md("body")})
+        self.assertTrue([f for f in r.findings if f.title == "Uses sudo"], r.findings)
+        self._assert_hidden(r, self.ANT)
+
+    def test_private_key_header_on_a_flagged_line(self):
+        r = scan_files({"x.sh": f"echo '{self.PEM}' > ~/.ssh/id_rsa\n",
+                        "SKILL.md": _min_md("body")})
+        self.assertTrue(by_cat(r, Category.EXFILTRATION), r.findings)
+        self._assert_hidden(r, self.PEM)
+
+    def test_key_past_the_snippet_width_is_still_redacted(self):
+        line = "sudo true " + "x" * 100 + " " + self.AWS
+        r = scan_files({"deploy.sh": line + "\n", "SKILL.md": _min_md("body")})
+        self._assert_hidden(r, self.AWS[:8])
 
 
 class PermissionsRule(unittest.TestCase):

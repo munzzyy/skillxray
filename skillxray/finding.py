@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from .secret_shapes import redact
+
 
 class Severity(enum.IntEnum):
     """Ordered so comparisons and sorting work (higher = worse)."""
@@ -117,12 +119,14 @@ def escape_control_chars(text: str) -> str:
 
 
 def snippet_for(text: str, index: int, width: int = 120) -> str:
-    """The single source line containing `index`, trimmed and truncated."""
+    """The single source line containing `index`, trimmed, with any credential
+    redacted, and truncated."""
     start = text.rfind("\n", 0, index) + 1
     end = text.find("\n", index)
     if end == -1:
         end = len(text)
-    line = escape_control_chars(text[start:end].strip())
+    # Redact before truncating, or a key cut at the edge slips past the patterns.
+    line = escape_control_chars(redact(text[start:end].strip()[: width + 512]))
     if len(line) > width:
         line = line[: width - 1] + "..."
     return line

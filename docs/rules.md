@@ -118,7 +118,9 @@ OWASP Agentic Skills Top 10: AST04 Insecure Metadata.
 
 Matches known credential shapes: AWS keys, GitHub and GitLab tokens,
 OpenAI/Anthropic/Stripe keys, Discord and Telegram bot tokens, private key
-blocks. Matches are redacted in the report.
+blocks. Matches are redacted everywhere in the report, including the snippet
+of any other rule that fires on the same line and the commands quoted from a
+manifest.
 
 ```bash
 export OPENAI_API_KEY="sk-proj-1234567890abcdef1234567890abcdef"
