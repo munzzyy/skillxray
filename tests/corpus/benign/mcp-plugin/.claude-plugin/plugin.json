@@ -1,0 +1,5 @@
+{
+  "name": "issue-lookup",
+  "description": "Looks up issues in your tracker through a pinned MCP server.",
+  "version": "1.0.0"
+}

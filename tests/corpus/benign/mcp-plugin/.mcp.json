@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "issues": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "some-server@1.2.3"
+      ]
+    }
+  }
+}

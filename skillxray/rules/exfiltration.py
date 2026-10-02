@@ -24,9 +24,17 @@ RULE_LEVEL = "error"
 _I = re.IGNORECASE
 
 # Endpoints whose whole purpose is receiving exfiltrated data / out-of-band callbacks.
+# A bare domain must stand alone as a host, so s3-transfer.sh, profile.io and
+# scripts/transfer.sh don't match.
+_HOST_START = r"(?:(?<=//)|(?<=[.@])|(?<![\w./-]))"
+_BARE_SINKS = (
+    r"webhook\.site|requestbin\.\w+|pipedream\.net|"
+    r"pastebin\.com|hastebin\.com|termbin\.com|transfer\.sh|0x0\.st|file\.io|"
+    r"burpcollaborator\.net|interact\.sh|dnslog\.cn|canarytokens\.\w+|requestrepo\.com"
+)
 _SINK = re.compile(
     r"(?:"
-    r"webhook\.site|requestbin\.\w+|(?:pipedream\.net)|"
+    + _HOST_START + r"(?:" + _BARE_SINKS + r")(?![\w-])|"
     r"\bhooks\.slack\.com/services|discord(?:app)?\.com/api/webhooks|api\.telegram\.org/bot|"
     # Bounded to 63 chars -- the real DNS max label length -- instead of an
     # unbounded +. A long dot-free run used to make this backtrack character
@@ -35,9 +43,7 @@ _SINK = re.compile(
     # be that long anyway, so the bound changes nothing about what matches.
     r"[0-9a-z-]{1,63}\.ngrok(?:-free)?\.(?:io|app|dev)|[0-9a-z-]{1,63}\.trycloudflare\.com|"
     r"[0-9a-z-]{1,63}\.lhr\.life|"
-    r"pastebin\.com|hastebin\.com|termbin\.com|transfer\.sh|0x0\.st|file\.io|"
-    r"\.oast\.(?:fun|live|pro|online|site|me)|burpcollaborator\.net|interact\.sh|"
-    r"dnslog\.cn|canarytokens\.\w+|requestrepo\.com"
+    r"\.oast\.(?:fun|live|pro|online|site|me)"
     r")",
     _I,
 )
