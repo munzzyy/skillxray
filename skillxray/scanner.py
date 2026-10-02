@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .discovery import discover, MAX_FILE_BYTES
+from .discovery import ARCHIVE_EXTS, discover, MAX_FILE_BYTES
 from .finding import ScanResult
 from .grade import grade
 from .rules import run_all
@@ -22,16 +22,23 @@ def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
 
     units = []
     seen_roots: set = set()
-    for p in paths:
-        target = Path(p)
+    read: set = set()
+    bundles = any(_is_bundle(Path(p)) for p in paths)
+    # Named bundles go last, so one a named folder already holds is read once, as part of it.
+    for target in sorted((Path(p) for p in paths), key=_is_bundle):
         base = target if target.is_dir() else target.parent
+        if _is_bundle(target) and os.path.realpath(target) in read:
+            continue
         for unit in discover(target, rel_base=base, exclude=exclude):
             # pre-commit can hand us several files from one skill; scanning the
             # same unit twice would double every finding.
-            key = str(unit.root.resolve())
+            key = (str(unit.root.resolve()), _is_bundle(target) and os.path.realpath(target))
             if key in seen_roots:
                 continue
             seen_roots.add(key)
+            if bundles:
+                read.update(os.path.realpath(t.path) for t in unit.files
+                            if isinstance(t.path, Path) and t.kind != "symlink")
             units.append((unit, _uri_base(base)))
 
     result = ScanResult(root=str(paths[0]) if len(paths) == 1 else "[multiple]")
@@ -59,6 +66,10 @@ def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
     result.findings.sort(key=lambda f: f.sort_key())
     result.grade, result.grade_score = grade(result.findings)
     return result
+
+
+def _is_bundle(target: Path) -> bool:
+    return target.suffix.lower() in ARCHIVE_EXTS and target.is_file()
 
 
 def _anchor(unit) -> str:

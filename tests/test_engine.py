@@ -495,6 +495,41 @@ class Archives(unittest.TestCase):
             scan_path(tmp)
         self.assertEqual(sorted(p.name for p in tmp.rglob("*")), before)
 
+    def test_two_named_bundles_from_one_folder_are_both_read(self):
+        clean = _zip({"zipped/SKILL.md":
+                      "---\nname: c\ndescription: an ordinary helper skill\n---\nhi\n"})
+        tmp = self._dir({"clean.mcpb": clean, "evil.mcpb": _zip(self.BUNDLE)})
+        for order in (("clean.mcpb", "evil.mcpb"), ("evil.mcpb", "clean.mcpb")):
+            with self.subTest(order=order):
+                argv = [str(tmp / n) for n in order] + ["--fail-on", "high", "--no-color"]
+                code, _ = CLI()._run(argv)
+                self.assertEqual(code, 1)
+                r = scan_paths([tmp / n for n in order])
+                self.assertIn(("SX-INJ", "evil.mcpb!zipped/SKILL.md"),
+                              {(f.rule_id, f.file) for f in r.findings})
+                self.assertEqual(r.units, 2)
+
+    def test_a_named_bundle_and_its_folder_are_each_read_once(self):
+        tmp = self._dir({"bundle.zip": _zip(self.BUNDLE)})
+        (tmp / "SKILL.md").write_text(
+            "---\nname: s\ndescription: a skill that ships a bundle\n---\n")
+        (tmp / "run.sh").write_text("crontab -l\n")
+        for order in ((tmp / "bundle.zip", tmp), (tmp, tmp / "bundle.zip")):
+            with self.subTest(first=order[0].name):
+                r = scan_paths(list(order))
+                hits = [(f.rule_id, f.file, f.line) for f in r.findings]
+                self.assertIn(("SX-CMD", "run.sh", 1), hits)
+                member = [h for h in hits if h[1] == "bundle.zip!zipped/run.sh"]
+                self.assertEqual(len(member), 1, hits)
+                self.assertEqual(r.units, 1)
+
+    def test_a_named_bundle_reached_through_a_symlink_is_read(self):
+        real, link = self._dir({"real.mcpb": _zip(self.BUNDLE)}), Path(tempfile.mkdtemp())
+        _symlink_or_skip(self, real / "real.mcpb", link / "server.mcpb")
+        r = scan_path(link / "server.mcpb")
+        self.assertIn("SX-INJ", {f.rule_id for f in r.findings})
+        self.assertNotIn("Symlink points outside the skill", self._titles(r))
+
     def test_member_names_are_escaped(self):
         r = scan_path(self._dir({"bundle.zip": _zip({"a\x1b[31m.md": self.INJ})}))
         files = {f.file for f in r.findings if f.rule_id == "SX-INJ"}

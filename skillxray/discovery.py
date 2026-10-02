@@ -446,8 +446,9 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=()) -> list:
         rel_base = path if path.is_dir() else path.parent
 
     if path.is_file() and path.suffix.lower() in ARCHIVE_EXTS:
-        units.append(_build_unit(path.parent, kind="loose", rel_base=rel_base,
-                                 exclude=exclude, paths=[path]))
+        # The user named this file, so a symlink to it is theirs to follow.
+        units.append(_build_unit(path.parent, kind="loose", rel_base=rel_base, exclude=exclude,
+                                 paths=[path], follow=True))
         return units
 
     if path.is_file() and path.name.lower() == "skill.md":
@@ -514,13 +515,13 @@ def _unit_kind(d: Path) -> Optional[str]:
 
 
 def _build_unit(root: Path, kind: str, rel_base: Optional[Path] = None,
-                exclude=(), paths=None, label: str = "") -> SkillUnit:
+                exclude=(), paths=None, label: str = "", follow: bool = False) -> SkillUnit:
     unit = SkillUnit(root=root, kind=kind, label=label)
     base = root if rel_base is None else rel_base
     if paths is None:
         paths = _iter_files(root, base, exclude)
     for fp in paths:
-        t = _read(fp, base, unit_root=root)
+        t = _read(fp, base, unit_root=None if follow else root)
         if t is None:
             continue
         unit.files.append(t)
