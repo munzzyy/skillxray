@@ -60,7 +60,7 @@ skillxray --git https://github.com/a/skill https://github.com/b/skill   # scan a
 
 Point it at a folder and it reads every text file in it. Files inside a skill or plugin folder are reported under that skill's name. Anything outside all of them, like a repo's install script, its README, or a `.claude/settings.json` at the root, is reported under `(repo root)`, because the agent reads and runs those too.
 
-Nothing in a scanned skill is ever executed. `--git` clones shallowly with hooks disabled, caps how much of any single file it will pull down, and only reads files. Pass it more than one URL to scan a whole list of repos under one `--fail-on` threshold instead of running skillxray once per repo.
+Nothing in a scanned skill is ever executed. `--git` clones shallowly with hooks disabled and only reads files. A big file in the repo still gets downloaded whole, and only its first 2 MB are read. Pass it more than one URL to scan a whole list of repos under one `--fail-on` threshold instead of running skillxray once per repo. That last part is newer than v0.2.1, so the tag only takes one URL.
 
 ### In CI
 
@@ -70,7 +70,7 @@ skillxray exits non-zero when it finds something at or above a severity you choo
 - run: pipx run --spec git+https://github.com/munzzyy/skillxray@v0.2.1 skillxray ./skills --fail-on high
 ```
 
-`--fail-on` takes `critical`, `high`, `medium`, `low`, or `none` (default `high`). It gates on security findings only. A missing LICENSE or a broken link is a hygiene note and never reds a build.
+`--fail-on` takes `critical`, `high`, `medium`, `low`, `info`, or `none` (default `high`). It gates on security findings only. A missing LICENSE or a broken link is a hygiene note and never reds a build.
 
 The exit code is the whole contract:
 
@@ -86,7 +86,7 @@ It also speaks SARIF, so findings show up in the GitHub Security tab, tagged wit
 
 ```yaml
 - run: pipx run --spec git+https://github.com/munzzyy/skillxray@v0.2.1 skillxray ./skills --sarif > skillxray.sarif
-- uses: github/codeql-action/upload-sarif@v3
+- uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: skillxray.sarif
 ```
@@ -102,7 +102,7 @@ Or skip the two steps and use the packaged action, which installs skillxray, sca
     fail-on: high
 ```
 
-Its `result` output is `pass` when nothing reached `fail-on`, `fail` when something did, and `error` when skillxray could not run at all, like a path that doesn't exist. Both `fail` and `error` fail the job. On a token that can't get `security-events: write`, such as a pull request from a fork, set `upload-sarif: false` and the action still scans and gates without uploading.
+Its `result` output is `pass` when nothing reached `fail-on`, `fail` when something did, and `error` when skillxray could not run at all, like a path that doesn't exist. Both `fail` and `error` fail the job. On a token that can't get `security-events: write`, such as a pull request from a fork, set `upload-sarif: false` and the action still scans and gates without uploading. Neither `error` nor `upload-sarif` is in v0.2.1 yet. That tag reports a scan that couldn't run as `fail`.
 
 ### Excluding paths
 
@@ -118,7 +118,7 @@ When most of a repo quotes attacks on purpose, this one included (tests, docs an
 
 ### Turning individual rules off
 
-`--ignore SX-SEC,SX-QLT` runs every rule except the ones listed. `--select SX-SEC` runs only the ones listed, switching everything else off. They're mutually exclusive, and an unknown rule id is an error rather than a silent no-op. Rule ids are listed in the [Rules Reference](docs/rules.md).
+`--ignore SX-SEC,SX-QLT` runs every rule except the ones listed. `--select SX-SEC` runs only the ones listed, switching everything else off. They're mutually exclusive, and an unknown rule id is an error rather than a silent no-op. Rule ids are listed in the [Rules Reference](docs/rules.md). Both flags came after v0.2.1, so a `@v0.2.1` pin rejects them until the next release.
 
 ```bash
 skillxray . --ignore SX-QLT       # keep hygiene notes out of the report entirely

@@ -6,6 +6,7 @@ import re
 import unittest
 from pathlib import Path
 
+import skillxray
 from skillxray.rules import RULE_METADATA
 
 ROOT = Path(__file__).parent.parent
@@ -65,3 +66,12 @@ class RuleMetadata(unittest.TestCase):
                 self.assertIsNotNone(section, rid)
                 self.assertIn(ast, section.group(1),
                               f"{rid} is tagged {ast} in code but its docs section does not say so")
+
+
+class ReleaseMetadata(unittest.TestCase):
+    def test_pyproject_version_matches_the_package(self):
+        pyproject = (ROOT / "pyproject.toml").read_text()
+        project = re.search(r"^\[project\]\n(.*?)(?=^\[|\Z)", pyproject, re.M | re.S)
+        version = re.search(r'^version\s*=\s*"([^"]+)"', project.group(1), re.M)
+        self.assertIsNotNone(version, "no version in [project]")
+        self.assertEqual(version.group(1), skillxray.__version__)

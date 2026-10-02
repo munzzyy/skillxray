@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="skillxray",
         description="Security and hygiene scanner for AI agent skills (SKILL.md, plugins, MCP bundles).",
     )
-    p.add_argument("target", nargs="*", default=["."],
+    p.add_argument("target", nargs="*", default=None,
                    help="path to a skill dir, a SKILL.md, or a directory of skills (default: .)")
     p.add_argument("--git", metavar="URL", nargs="+",
                    help="clone one or more git repos (shallow, read-only) and scan them "
@@ -100,15 +100,24 @@ def main(argv=None) -> int:
         print(f"skillxray: {e}", file=sys.stderr)
         return 2
 
+    if args.git and args.target:
+        print("skillxray: --git scans the repos it clones; drop the local path "
+              f"{args.target[0]!r} or run it separately", file=sys.stderr)
+        return 2
+    if args.ref and not args.git:
+        print("skillxray: --ref only applies to --git", file=sys.stderr)
+        return 2
+    targets = args.target or ["."]
+
     try:
         if args.git:
             result = scan_git_many(args.git, args.ref, exclude=args.exclude, enabled=enabled)
         else:
-            for target_path in args.target:
+            for target_path in targets:
                 if not os.path.exists(target_path):
                     print(f"skillxray: no such path: {target_path}", file=sys.stderr)
                     return 2
-            result = scan_paths(args.target, exclude=args.exclude, enabled=enabled)
+            result = scan_paths(targets, exclude=args.exclude, enabled=enabled)
     except RuntimeError as e:
         print(f"skillxray: {e}", file=sys.stderr)
         return 2

@@ -754,6 +754,16 @@ class GitScanning(unittest.TestCase):
         blob_limit_args = [a for a in seen["cmd"] if a.startswith("--filter=blob:limit=")]
         self.assertEqual(len(blob_limit_args), 1)
 
+    def test_git_with_a_local_path_too_is_a_usage_error(self):
+        repo = self._repo("solo")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code, out = CLI()._run(["tests/corpus/malicious/cookie-stealer",
+                                    "--git", repo.as_uri(), "--json"])
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("cookie-stealer", err.getvalue())
+
     def test_cli_accepts_multiple_git_urls(self):
         a, b = self._repo("a"), self._repo("b")
         code, out = CLI()._run(["--git", a.as_uri(), b.as_uri(), "--json", "--fail-on", "none"])
@@ -1004,6 +1014,24 @@ class CLI(unittest.TestCase):
     def test_missing_path(self):
         code, _ = self._run(["/no/such/path/here", "--no-color"])
         self.assertEqual(code, 2)
+
+    def test_ref_without_git_is_a_usage_error(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code, out = self._run(["--ref", "main", "tests/corpus/benign/weather"])
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("--ref", err.getvalue())
+
+    def test_no_target_scans_the_working_directory(self):
+        cwd = os.getcwd()
+        os.chdir("tests/corpus/malicious/cookie-stealer")
+        try:
+            code, out = self._run(["--json", "--fail-on", "high"])
+        finally:
+            os.chdir(cwd)
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out)["root"], ".")
 
     def test_bad_fail_on_value_exits_two_not_one(self):
         # Exit 1 means "a finding was found". A misspelled flag means nothing
