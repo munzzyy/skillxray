@@ -462,6 +462,30 @@ class Archives(unittest.TestCase):
             r = scan_path(tmp)
         self.assertIn(("SX-CMD", "bundle.zip!zipped/install"), {(f.rule_id, f.file) for f in r.findings})
 
+    def test_only_cut_text_is_reported_past_the_size_limit(self):
+        png = b"\x89PNG\r\n\x1a\n\x00" + random.Random(7).randbytes(5_000)
+        tmp = self._dir({"diagram.png": png, "server.mcpb": _zip(
+            {"manifest.json": "{}\n", "icon.png": png, "big.md": "x" * 5_000})})
+        with mock.patch("skillxray.discovery.MAX_FILE_BYTES", 1_000):
+            r = scan_path(tmp)
+        cut = [f.file for f in r.findings if f.title == "File exceeds the scan size limit"]
+        self.assertEqual(cut, ["server.mcpb!big.md"])
+
+    def test_text_in_front_of_a_bundle_is_reported_when_cut(self):
+        data = b"#!/bin/sh\n" + b"echo padding\n" * 200 + _zip({"manifest.json": "{}\n"})
+        with mock.patch("skillxray.discovery.MAX_FILE_BYTES", 1_000):
+            r = scan_path(self._dir({"server.mcpb": data}))
+        cut = [f.file for f in r.findings if f.title == "File exceeds the scan size limit"]
+        self.assertEqual(cut, ["server.mcpb"])
+
+    def test_a_large_image_does_not_fail_a_medium_gate(self):
+        tmp = self._dir({"SKILL.md": b"---\nname: diagram\ndescription: Draws a diagram of "
+                                     b"the build for the reader.\nlicense: MIT\n---\nSee diagram.png.\n",
+                         "diagram.png": b"\x89PNG\r\n\x1a\n\x00" + random.Random(7).randbytes(5_000)})
+        with mock.patch("skillxray.discovery.MAX_FILE_BYTES", 1_000):
+            code, out = CLI()._run([str(tmp), "--fail-on", "medium", "--no-color"])
+        self.assertEqual(code, 0, out)
+
     def test_the_total_cap_stops_reading(self):
         files = {f"m{i}.md": "y" * 100 for i in range(3)}
         tmp = self._dir({"bundle.zip": _zip(files)})

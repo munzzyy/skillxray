@@ -163,9 +163,11 @@ is a finding of its own:
 - a member that fails to decompress (medium)
 - an archive nested inside another one, reported but not opened (medium)
 
-A file bigger than the 2 MB read limit is reported at medium. Only its first
-2 MB were scanned. Padding a file past the limit hides a payload from every
-other rule.
+A text file bigger than the 2 MB read limit is reported at medium. Only its
+first 2 MB were scanned. Padding a file past the limit hides a payload from
+every other rule. Images and other binaries are never read as text, so a big
+one is not reported. Neither is a bundle that opens: its members are read one
+by one, each under the same limit.
 
 A symlink that points outside the skill is reported at medium and never
 followed. What it points at is not part of the skill. On the machine that

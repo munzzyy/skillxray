@@ -72,7 +72,7 @@ def check(unit: SkillUnit) -> list:
 
 
 def _truncated_files(unit: SkillUnit) -> list:
-    # Padding past the read limit hides a payload from every other rule, so this has to gate.
+    # Cut text can hide a padded payload, so it gates; binaries (a zip's header too) are never read as text.
     return [_mk(
         Severity.MEDIUM, t.relpath,
         "File exceeds the scan size limit",
@@ -80,7 +80,7 @@ def _truncated_files(unit: SkillUnit) -> list:
         "past that point was never scanned. Padding a file past the limit is a way "
         "to hide a payload from a scanner.",
         "Split large files up, or review the rest of this one by hand before trusting it.",
-    ) for t in unit.files if t.oversized]
+    ) for t in unit.files if t.oversized and t.is_text]
 
 
 # note code -> (severity, title, what happened, fix)
