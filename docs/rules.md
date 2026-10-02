@@ -173,7 +173,14 @@ A symlink that points outside the skill is reported at medium and never
 followed. What it points at is not part of the skill. On the machine that
 installs the skill the link can reach any file there. A link to another file
 inside the same skill is read normally. FIFOs and device files are skipped
-without being opened.
+without being opened. A linked folder follows the same rule.
+
+The one exception is a folder of skills. Linking a skill into a skills folder
+is a normal way to install it, so a skill folder symlinked in from somewhere
+else is scanned as one of the skills, once, however many links point at it.
+A `--git` clone never follows a link out of the clone. That link gets the
+medium finding instead, because on the machine running the scan it points at
+that machine's files.
 
 `node_modules`, `.venv` and `venv` folders are not read. Installed packages
 are big and mostly someone else's code. A unit that holds one gets an info

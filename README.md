@@ -59,7 +59,7 @@ skillxray --git https://github.com/someone/their-skill   # clone (read-only) and
 skillxray --git https://github.com/a/skill https://github.com/b/skill   # scan a whole list in one run
 ```
 
-Point it at a folder and it reads every text file in it. Files inside a skill or plugin folder are reported under that skill's name. Anything outside all of them, like a repo's install script, its README, or a `.claude/settings.json` at the root, is reported under `(repo root)`, because the agent reads and runs those too.
+Point it at a folder and it reads every text file in it. Files inside a skill or plugin folder are reported under that skill's name. Anything outside all of them, like a repo's install script, its README, or a `.claude/settings.json` at the root, is reported under `(repo root)`, because the agent reads and runs those too. A skill folder symlinked into the folder, which is how a lot of people install skills, is scanned like the others. A `--git` clone never follows a link out of the clone, and reports it instead.
 
 Nothing in a scanned skill is ever executed. `--git` clones shallowly with hooks disabled and only reads files. A big file in the repo still gets downloaded whole, and only its first 2 MB are read. Pass it more than one URL to scan a whole list of repos under one `--fail-on` threshold instead of running skillxray once per repo. That last part is newer than v0.2.1, so the tag only takes one URL.
 

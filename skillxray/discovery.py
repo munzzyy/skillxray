@@ -291,9 +291,10 @@ def _rel_to(path: Path, base: Path) -> str:
         return _norm(str(path))
 
 
-def _prune(d: Path, dirnames: list, rel_base: Path, exclude, skipped: Optional[list]) -> None:
-    """Drop the subfolders an os.walk should not enter, noting vendored ones."""
-    keep = []
+def _prune(d: Path, dirnames: list, rel_base: Path, exclude, skipped: Optional[list]) -> list:
+    """Drop the subfolders an os.walk should not enter, noting vendored ones.
+    Returns the symlinked folders among the rest, which os.walk never enters."""
+    keep, links = [], []
     for dn in dirnames:
         rel = _rel_to(d / dn, rel_base)
         if excluded(rel, exclude):
@@ -302,13 +303,18 @@ def _prune(d: Path, dirnames: list, rel_base: Path, exclude, skipped: Optional[l
             if dn in VENDOR_DIRS and skipped is not None:
                 skipped.append(escape_control_chars(rel))
             continue
+        if (d / dn).is_symlink():
+            links.append(d / dn)
+            continue
         keep.append(dn)
     dirnames[:] = keep
+    return links
 
 
 def _iter_files(root: Path, rel_base: Path, exclude=(), skipped: Optional[list] = None):
     for dirpath, dirnames, filenames in os.walk(root):
-        _prune(Path(dirpath), dirnames, rel_base, exclude, skipped)
+        # _read reports a folder link out of the unit; one inside it is read through its real path.
+        yield from _prune(Path(dirpath), dirnames, rel_base, exclude, skipped)
         for fn in filenames:
             fp = Path(dirpath) / fn
             if excluded(_rel_to(fp, rel_base), exclude):
@@ -468,7 +474,7 @@ def _scalar(v: str):
 
 
 def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
-             budget: Optional[ArchiveBudget] = None) -> list:
+             budget: Optional[ArchiveBudget] = None, follow_links: bool = True) -> list:
     """Return the skill units under `path` (or the single unit it names).
 
     `rel_base` is the folder the user asked for, or the folder holding the file
@@ -476,6 +482,8 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
     folder of skills says `alpha/SKILL.md` instead of a bare `SKILL.md` that
     nothing can be traced to, and naming a skill's SKILL.md reports the same
     paths as naming its folder. `budget` is shared by every call in one scan.
+    `follow_links` lets a folder of skills include a skill symlinked in from
+    elsewhere; a --git clone turns it off, since its links point at the runner.
     """
     path = Path(path)
     units: list = []
@@ -522,6 +530,7 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
     # A collection: units never nest, so the walk stops at each one and the rest are leftovers.
     leftovers: list = []
     skipped: list = []
+    linked: list = []
     for dirpath, dirnames, filenames in os.walk(path):
         d = Path(dirpath)
         kind = _unit_kind(d) if d != path else None
@@ -530,11 +539,22 @@ def discover(path: Path, rel_base: Optional[Path] = None, exclude=(),
                                      budget=budget))
             dirnames[:] = []
             continue
-        _prune(d, dirnames, rel_base, exclude, skipped)
+        for link in _prune(d, dirnames, rel_base, exclude, skipped):
+            # A link that stays inside the scan is walked through its real path, or was excluded.
+            if _inside(link, path):
+                continue
+            if follow_links and _unit_kind(link):
+                linked.append(link)
+            else:
+                leftovers.append(link)
         for fn in filenames:
             fp = d / fn
             if not excluded(_rel_to(fp, rel_base), exclude):
                 leftovers.append(fp)
+    # Sorted, so when two links reach one skill the scan keeps the same name every time.
+    for link in sorted(linked):
+        units.append(_build_unit(link, kind=_unit_kind(link), rel_base=rel_base,
+                                 exclude=exclude, budget=budget))
     if not units:
         # No formal skill markers: scan the directory as a loose unit so the
         # user still gets results instead of silence.

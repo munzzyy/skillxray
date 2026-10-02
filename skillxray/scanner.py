@@ -16,7 +16,8 @@ from .rules import run_all
 from .rules.quality import hygiene_checks
 
 
-def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
+def scan_paths(paths: list[str | Path], exclude=(), enabled=None,
+               follow_links: bool = True) -> ScanResult:
     if not paths:
         return ScanResult(root=".")
 
@@ -30,7 +31,8 @@ def scan_paths(paths: list[str | Path], exclude=(), enabled=None) -> ScanResult:
         base = target if target.is_dir() else target.parent
         if _is_lone_file(target) and os.path.realpath(target) in read:
             continue
-        for unit in discover(target, rel_base=base, exclude=exclude, budget=budget):
+        for unit in discover(target, rel_base=base, exclude=exclude, budget=budget,
+                             follow_links=follow_links):
             # pre-commit can hand us several files from one skill; scanning the
             # same unit twice would double every finding.
             key = (str(unit.root.resolve()), _is_lone_file(target) and os.path.realpath(target))
@@ -98,8 +100,8 @@ def _uri_base(folder: Path) -> str:
     return "" if rel == "." else rel
 
 
-def scan_path(path, exclude=(), enabled=None) -> ScanResult:
-    return scan_paths([path], exclude=exclude, enabled=enabled)
+def scan_path(path, exclude=(), enabled=None, follow_links: bool = True) -> ScanResult:
+    return scan_paths([path], exclude=exclude, enabled=enabled, follow_links=follow_links)
 
 
 # Cap the pack transfer at a bit above MAX_FILE_BYTES. This keeps the clone
@@ -128,7 +130,7 @@ def scan_git(url: str, ref: str | None = None, exclude=(), enabled=None) -> Scan
     cmd += ["--", url, str(dest)]
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=180)
-        result = scan_path(dest, exclude=exclude, enabled=enabled)
+        result = scan_path(dest, exclude=exclude, enabled=enabled, follow_links=False)
         result.root = url
         # Uris stay relative to the clone, even when the temp dir it sits in is under cwd.
         result.findings = [dataclasses.replace(f, uri_base="") for f in result.findings]

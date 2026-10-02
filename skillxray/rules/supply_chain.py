@@ -168,7 +168,7 @@ def _escaping_symlinks(unit: SkillUnit) -> list:
         findings.append(_mk(
             Severity.MEDIUM, t.relpath,
             "Symlink points outside the skill",
-            f"This file is a symlink to `{link}`, which is outside the skill. "
+            f"This is a symlink to `{link}`, which is outside the skill. "
             "skillxray does not follow it, so whatever it points at was not "
             "scanned, and on the machine that installs the skill it can point "
             "at any file there.",

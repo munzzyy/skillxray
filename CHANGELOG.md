@@ -10,6 +10,7 @@ Several of these widen what a scan reads. A skill or repo that graded A on v0.2.
 - Hook commands and MCP server launch lines in `plugin.json`, `hooks.json`, `.mcp.json` and the settings files get the SX-CMD patterns. Hooks on any event name are reported, not only the nine it knew before.
 - Zip bundles (`.zip`, `.skill`, `.mcpb`, `.dxt`) are opened in memory and every member is scanned. Whatever stops a full read is an SX-SUP medium: an encrypted member, a nested archive or a zip that inflates far past its size.
 - A symlink that points out of a skill is reported at medium and never followed. FIFOs and device files are skipped.
+- A skill folder symlinked into a folder of skills is scanned. It used to be skipped, so the folder graded A. A linked folder that leaves a skill, or a `--git` clone, is reported at medium like a linked file.
 - A text file cut at the 2 MB read limit is an SX-SUP medium instead of a hygiene note, so a medium gate fails on it. Images and other binaries are not reported.
 - SX-INJ also reads data files and scripts. A script's hits are one severity lower, since scripts embed prompt text for honest reasons too.
 - A run of hidden tag characters is one finding that says what it decodes to. The report prints invisible characters as markers like `<U+202E>`.

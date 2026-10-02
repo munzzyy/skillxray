@@ -5,7 +5,8 @@ injection, obfuscated commands, or worse. It is static by design - it reads
 files, matches patterns, and prints a report. It never executes anything from
 the skill it is scanning, never imports it, and never talks to the network. It
 only opens regular files, and it does not follow a symlink that points outside
-the skill.
+the skill. The one link it does follow is a skill folder symlinked into a
+local folder of skills, and never one inside a `--git` clone.
 
 That makes the scanner itself the attack surface. A skill crafted to crash the
 parser, to hide a finding from it, or to smuggle terminal escape sequences into
