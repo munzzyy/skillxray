@@ -30,10 +30,18 @@ inputs:
       is the only way to be sure the rules match the tag you asked for.
     required: false
     default: ""
+  upload-sarif:
+    description: >-
+      Upload the SARIF to code scanning. Set it to "false" on a token without
+      security-events: write, like a pull request from a fork.
+    required: false
+    default: "true"
 
 outputs:
   result:
-    description: "'pass' or 'fail', whether a finding at or above fail-on was found."
+    description: >-
+      'pass' when nothing reached fail-on, 'fail' when a finding did, and
+      'error' when skillxray could not run (a missing path, a bad flag).
     value: ${{ steps.gate.outputs.result }}
   sarif-file:
     description: "Path to the generated SARIF file."
@@ -85,7 +93,7 @@ runs:
         INPUTS_PATH: ${{ inputs.path }}
 
     - name: Upload SARIF
-      if: steps.sarif.outcome == 'success'
+      if: steps.sarif.outcome == 'success' && inputs.upload-sarif != 'false'
       uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
       with:
         sarif_file: ${{ steps.sarif.outputs.file }}
@@ -107,6 +115,7 @@ runs:
           cat "$out"
           echo '```'
         } >> "$GITHUB_STEP_SUMMARY"
+        echo "code=$code" >> "$GITHUB_OUTPUT"
         exit "$code"
       env:
         INPUTS_PATH: ${{ inputs.path }}
@@ -117,9 +126,19 @@ runs:
       if: always()
       shell: bash
       run: |
-        if [ "${{ steps.scan.outcome }}" = "success" ]; then
-          echo "result=pass" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-        echo "result=fail" >> "$GITHUB_OUTPUT"
-        exit 1
+        case "$SCAN_CODE" in
+          0)
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+            ;;
+          1)
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+            exit 1
+            ;;
+          *)
+            echo "result=error" >> "$GITHUB_OUTPUT"
+            echo "::error::skillxray could not run (exit code ${SCAN_CODE:-none}). The job summary has its output."
+            exit 2
+            ;;
+        esac
+      env:
+        SCAN_CODE: ${{ steps.scan.outputs.code }}

@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.9", "3.11", "3.12", "3.13"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,3 +30,45 @@ jobs:
         run: |
           python -m skillxray tests/corpus/benign/weather --fail-on high
           python -m skillxray tests/corpus/malicious/cookie-stealer --json --fail-on none
+
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # actionlint 1.7 rejects the $/ self-repository form, so these stay on ./
+      - name: Run the action on a clean skill
+        id: clean
+        uses: ./ # zizmor: ignore[self-repository]
+        with:
+          path: tests/corpus/benign/weather
+          upload-sarif: "false"
+      - name: Run the action on a malicious skill
+        id: malicious
+        continue-on-error: true
+        uses: ./ # zizmor: ignore[self-repository]
+        with:
+          path: tests/corpus/malicious/cookie-stealer
+          upload-sarif: "false"
+      - name: Run the action on a path that does not exist
+        id: missing
+        continue-on-error: true
+        uses: ./ # zizmor: ignore[self-repository]
+        with:
+          path: tests/corpus/no-such-skill
+          upload-sarif: "false"
+      - name: Check each result
+        env:
+          CLEAN: ${{ steps.clean.outputs.result }}
+          MALICIOUS: ${{ steps.malicious.outputs.result }}
+          MALICIOUS_OUTCOME: ${{ steps.malicious.outcome }}
+          MISSING: ${{ steps.missing.outputs.result }}
+          MISSING_OUTCOME: ${{ steps.missing.outcome }}
+        run: |
+          echo "clean=$CLEAN malicious=$MALICIOUS/$MALICIOUS_OUTCOME missing=$MISSING/$MISSING_OUTCOME"
+          test "$CLEAN" = pass
+          test "$MALICIOUS" = fail
+          test "$MALICIOUS_OUTCOME" = failure
+          test "$MISSING" = error
+          test "$MISSING_OUTCOME" = failure

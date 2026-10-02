@@ -102,6 +102,8 @@ Or skip the two steps and use the packaged action, which installs skillxray, sca
     fail-on: high
 ```
 
+Its `result` output is `pass` when nothing reached `fail-on`, `fail` when something did, and `error` when skillxray could not run at all, like a path that doesn't exist. Both `fail` and `error` fail the job. On a token that can't get `security-events: write`, such as a pull request from a fork, set `upload-sarif: false` and the action still scans and gates without uploading.
+
 ### Excluding paths
 
 Any repo that ships security fixtures, a red-team corpus, or docs that quote `curl | sh` will light up. `--exclude` takes a glob relative to the path you scanned and is repeatable:

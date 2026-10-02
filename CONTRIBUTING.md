@@ -9,7 +9,7 @@ git clone https://github.com/munzzyy/skillxray
 cd skillxray
 ```
 
-There's nothing to install. skillxray is pure standard library, and so is its test suite.
+There is nothing to install. skillxray is pure standard library, and so is its test suite.
 
 ## Running the tests
 
@@ -17,7 +17,7 @@ There's nothing to install. skillxray is pure standard library, and so is its te
 python -m unittest discover -s tests -t .
 ```
 
-That's the whole suite: unit tests per rule, engine tests, and a labeled corpus in `tests/corpus/`. CI runs the same command across Linux, macOS, and Windows on Python 3.9 through 3.13.
+That is the whole suite: unit tests per rule, engine tests, and a labeled corpus in `tests/corpus/`. CI runs the same command on Linux, macOS and Windows with Python 3.9 through 3.14. It also runs the packaged action against the corpus and a missing path.
 
 ## Adding or fixing a rule
 
@@ -36,4 +36,4 @@ skillxray has no runtime dependencies and that's a feature. If a change needs a 
 
 ## License
 
-By opening a PR you agree your contribution is offered under the project's GPL-3.0-or-later license.
+By opening a PR you agree your contribution is offered under the project's [GPL-3.0-or-later](https://github.com/munzzyy/skillxray/blob/main/LICENSE) license.
